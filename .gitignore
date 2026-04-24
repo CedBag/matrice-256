@@ -1,0 +1,17 @@
+# Projet Matrice-256 / bokono
+# Ignorer les environnements virtuels
+.venv/
+venv/
+env/
+.env
+
+# Ignorer le cache Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# SECRET INDUSTRIEL : Fichiers privés et documents originaux de la base Fâ
+data/knowledge_base/fa_knowledge_private.json
+data/*.pdf
+data/extracted/

@@ -1,0 +1,13 @@
+# Matrice-256 (FaNet v4.0) - Cœur Algorithmique
+torch>=2.0.0
+numpy>=1.24.0
+
+# PoC et Analyse des Données (Health-Tech & Smart-Agri)
+pandas>=2.0.0
+scikit-learn>=1.2.2
+
+# Interface Utilisateur (Vitrine Interactive)
+dash>=2.15.0
+
+# Export Edge & Production (Optionnel)
+# onnxscript>=0.1.0

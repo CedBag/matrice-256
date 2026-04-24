@@ -1,0 +1,28 @@
+{
+  "pythonVersion": "3.13",
+  "pythonPlatform": "Windows",
+  "pythonPath": "C:/Python313/python.exe",
+  "venvPath": ".",
+  "extraPaths": [
+    ".",
+    "C:/Python313/Lib",
+    "C:/Python313/Lib/site-packages",
+    "C:/Users/Cedoque BAGBONON/AppData/Roaming/Python/Python313/site-packages"
+  ],
+  "include": [
+    "bokono",
+    "tests",
+    "scripts"
+  ],
+  "exclude": [
+    "**/__pycache__",
+    "**/.pytest_cache",
+    "**/node_modules"
+  ],
+  "typeCheckingMode": "basic",
+  "reportMissingImports": "warning",
+  "reportMissingModuleSource": "none",
+  "reportUnknownMemberType": "none",
+  "reportUnknownVariableType": "none",
+  "reportUnknownArgumentType": "none"
+}

@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bokono"
+version = "4.0.0"
+description = "Bibliothèque algorithmique et ML fondée sur la logique binaire du Fâ — Bénin"
+readme = "README.md"
+license = {text = "Proprietary Software"}
+authors = [
+    {name = "Cedoque BAGBONON - Projet Matrice-256", email = "contact@matrice256.bj"}
+]
+keywords = ["fa", "benin", "machine-learning", "divination", "bokono", "african-ai", "proprietary"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
+requires-python = ">=3.10"
+dependencies = [
+    "torch>=2.0.0",
+    "numpy>=1.24.0",
+    "pandas>=2.0.0",
+    "scikit-learn>=1.2.2",
+    "dash>=2.15.0"
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.setuptools.packages.find]
+include = ["bokono*"]

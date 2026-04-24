@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Feuille de Route - FaNet LLM</title>
+    <style>
+        body {
+            background-color: #0B0F19; /* Fond sombre espace */
+            color: #E2E8F0;
+            font-family: 'Inter', 'Segoe UI', Roboto, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 50px;
+            margin: 0;
+            min-height: 100vh;
+        }
+        .roadmap-container {
+            width: 100%;
+            max-width: 1100px;
+            position: relative;
+        }
+        h1 {
+            color: #38BDF8;
+            text-align: center;
+            font-size: 2.5rem;
+            letter-spacing: 2px;
+            margin-bottom: 10px;
+        }
+        h2 {
+            color: #94A3B8;
+            text-align: center;
+            font-weight: 400;
+            margin-bottom: 60px;
+            font-size: 1.2rem;
+        }
+        
+        /* La ligne centrale lumineuse */
+        .timeline {
+            position: relative;
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+        .timeline::after {
+            content: '';
+            position: absolute;
+            width: 4px;
+            background-color: #232B3E;
+            top: 0;
+            bottom: 0;
+            left: 50%;
+            margin-left: -2px;
+            border-radius: 5px;
+            box-shadow: 0 0 10px #38BDF8;
+            background: linear-gradient(to bottom, #10B981, #38BDF8, #8B5CF6);
+        }
+
+        /* Les blocs d'étapes */
+        .container {
+            padding: 10px 40px;
+            position: relative;
+            background-color: inherit;
+            width: 50%;
+            box-sizing: border-box;
+        }
+        .left {
+            left: 0;
+        }
+        .right {
+            left: 50%;
+        }
+
+        /* Les cercles sur la timeline */
+        .container::after {
+            content: '';
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            right: -10px;
+            background-color: #0B0F19;
+            border: 4px solid #38BDF8;
+            top: 30px;
+            border-radius: 50%;
+            z-index: 1;
+        }
+        .right::after {
+            left: -10px;
+        }
+        
+        /* Couleurs spécifiques par phase */
+        .left:nth-child(1)::after { border-color: #10B981; box-shadow: 0 0 15px #10B981; }
+        .right:nth-child(2)::after { border-color: #38BDF8; box-shadow: 0 0 15px #38BDF8; }
+        .left:nth-child(3)::after { border-color: #8B5CF6; box-shadow: 0 0 15px #8B5CF6; }
+
+        /* Contenu des blocs */
+        .content {
+            padding: 30px;
+            background-color: #151B2B;
+            position: relative;
+            border-radius: 12px;
+            border: 1px solid #232B3E;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            transition: transform 0.3s ease;
+        }
+        .content:hover {
+            transform: translateY(-5px);
+            border-color: #38BDF8;
+        }
+        
+        .year-badge {
+            display: inline-block;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-weight: bold;
+            font-size: 0.9rem;
+            margin-bottom: 15px;
+        }
+        .phase-1 { background-color: rgba(16, 185, 129, 0.2); color: #10B981; border: 1px solid #10B981;}
+        .phase-2 { background-color: rgba(56, 189, 248, 0.2); color: #38BDF8; border: 1px solid #38BDF8;}
+        .phase-3 { background-color: rgba(139, 92, 246, 0.2); color: #8B5CF6; border: 1px solid #8B5CF6;}
+
+        .title-block {
+            font-size: 1.5rem;
+            color: #F8FAFC;
+            margin: 0 0 10px 0;
+            font-weight: 700;
+        }
+        .subtitle-block {
+            font-size: 1.1rem;
+            color: #94A3B8;
+            margin: 0 0 20px 0;
+        }
+        .specs {
+            background-color: #0B0F19;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 3px solid #38BDF8;
+            margin-top: 20px;
+            font-family: monospace;
+            font-size: 0.95rem;
+            color: #CBD5E1;
+        }
+        .specs span {
+            color: #F43F5E;
+            font-weight: bold;
+        }
+
+    </style>
+</head>
+<body>
+
+<div class="roadmap-container">
+    <h1>VISION STRATÉGIQUE (2026-2030+)</h1>
+    <h2>L'Émergence du Premier Foundation Model Souverain Africain</h2>
+
+    <div class="timeline">
+        
+        <!-- PHASE 1 -->
+        <div class="container left">
+            <div class="content">
+                <span class="year-badge phase-1">2026-2027</span>
+                <h3 class="title-block">Matrice-256 (v4.0)</h3>
+                <p class="subtitle-block">Standardisation & Déploiement Edge</p>
+                <p>Publication du package scientifique <b>bokono</b> sur PyPI. Exportation de l'architecture neuro-symbolique via ONNX pour garantir un déploiement hors-ligne sur les micro-contrôleurs agricoles et infrastructures hospitalières (Edge Computing).</p>
+                <div class="specs" style="border-left-color: #10B981;">
+                    [Params] 50 000<br>
+                    [Données] Variables Tabulaires / IoT<br>
+                    [Focus] <span>Explicabilité Absolue (Zéro Boîte Noire)</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- PHASE 2 -->
+        <div class="container right">
+            <div class="content">
+                <span class="year-badge phase-2">2028</span>
+                <h3 class="title-block">FaNet-SLM "Mbemba"</h3>
+                <p class="subtitle-block">Small Language Model Africain</p>
+                <p>Hybridation de la fonction de perte <b>FaImbalanceLoss</b> avec un <i>Transformer Temporel</i>. Passage de l'analyse tabulaire à la tokenisation linguistique (BPE). Compréhension native du langage naturel structurée par l'ontologie géomantique.</p>
+                <div class="specs" style="border-left-color: #38BDF8;">
+                    [Params] 170 Millions<br>
+                    [Données] Corpus Africain Francophone (3.4B Tokens)<br>
+                    [Focus] <span>Frugalité & Traitement Linguistique Local</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- PHASE 3 -->
+        <div class="container left">
+            <div class="content">
+                <span class="year-badge phase-3">2030 et Au-delà</span>
+                <h3 class="title-block">LLM Souverain "Dã-Gbé"</h3>
+                <p class="subtitle-block">Le Foundation Model Panafricain</p>
+                <p>Développement de l'intelligence artificielle générative ultime pour l'Afrique. Entraîné sur le "Grand Corpus" (Fon, Yoruba, Dendi...). Alignement éthique garanti mathématiquement par la matrice Fâ, sans censure occidentale importée.</p>
+                <div class="specs" style="border-left-color: #8B5CF6;">
+                    [Params] 35 Milliards<br>
+                    [Données] Grand Corpus Multi-Langues Africaines<br>
+                    [Focus] <span>Souveraineté Totale (Alternative à GPT)</span>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+</body>
+</html>
