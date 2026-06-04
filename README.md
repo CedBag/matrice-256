@@ -82,9 +82,10 @@ Exécutez les démos interactives pour voir le modèle en action :
 
 ---
 
-## 🔐 Propriété & Souveraineté
+## 🔐 Propriété, Licence & Souveraineté
 
-- **Conformité RGPD** : Le test Membership Inference Attack (Test 7) prouve que FaNet ne mémorise pas les données d'entraînement.
-- **Souveraineté** : Modèle léger (50 000 paramètres), exécutable sur CPU/Edge (Raspberry Pi), sans dépendance au cloud.
+*   **Conformité Règlementaire** : Le test Membership Inference Attack (Test 7) démontre empiriquement que FaNet ne mémorise pas ses données d'apprentissage (AUC = 0.526, proche du hasard pur), garantissant une conformité native aux normes de protection de la vie privée (RGPD Art. 25 & HIPAA).
+*   **Souveraineté Énergétique** : Modèle ultra-léger (~50 000 paramètres), compilable JIT, conçu pour fonctionner en local et hors-ligne (Air-Gapped) sur du matériel modeste (Edge IoT, Raspberry Pi).
+*   **Licence Propriétaire de Recherche Académique** : Ce dépôt est publié à des fins de révision scientifique par les pairs (peer-review) et d'évaluation de recherche uniquement. Toute reproduction, modification ou utilisation commerciale est strictement interdite sans un accord écrit préalable du propriétaire.
+*   **Contact & Feedback** : Pour signaler des bugs, proposer des améliorations académiques ou pour toute demande d'exploitation commerciale, veuillez écrire à : **projet.matrice256@protonmail.com**.
 
-**Propriété Intellectuelle (PI)** : `Copyright © 2026 - Cedoque BAGBONON. Strictement Propriétaire. La base de données Fâ et l'encodeur sont des secrets industriels protégés.`

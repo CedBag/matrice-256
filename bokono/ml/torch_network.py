@@ -83,14 +83,22 @@ class TorchFaNet(nn.Module):
         x_max: float = 1.0,
         seed: int = 42,
         seq_len: int = 0,
+        bidirectional: bool = False,
+        num_layers: int = 1,
+        dropout: float = 0.0,
     ):
         super().__init__()
         self.n_features = n_features
         self.hidden_dim = hidden_dim
         self.n_outputs = n_outputs
         self.activation_name = activation
+        self.x_min = x_min
+        self.x_max = x_max
         self.seed = seed
         self.seq_len = seq_len  # 0 = mode Tabulaire (retro-compat), >0 = mode LSTM Temporel
+        self.bidirectional = bidirectional
+        self.num_layers = num_layers
+        self.dropout_val = dropout
 
         # Tenseur Matrice-256 pour l'initialisation
         fa_tensor = FaMatrix().to_weight_tensor()
@@ -106,9 +114,10 @@ class TorchFaNet(nn.Module):
             self.lstm_layer = nn.LSTM(
                 input_size=embedding_dim,
                 hidden_size=hidden_dim,
-                num_layers=1,
+                num_layers=num_layers,
                 batch_first=True,
-                dropout=0.0,
+                dropout=dropout if num_layers > 1 else 0.0,
+                bidirectional=bidirectional,
             )
             self.hidden = None  # Non utilise en mode LSTM
         else:
@@ -116,7 +125,15 @@ class TorchFaNet(nn.Module):
             self.hidden = TorchFaHidden(embedding_dim, hidden_dim, activation, seed, fa_tensor)
             self.lstm_layer = None  # Non utilise en mode Dense
 
-        self.decoder = TorchFaDecoder(hidden_dim, n_outputs, seed)
+        # Dimension d'entrée du décodeur : doublée si LSTM bidirectionnel
+        decoder_input_dim = hidden_dim * 2 if (seq_len > 0 and bidirectional) else hidden_dim
+
+        if dropout > 0.0:
+            self.dropout_layer = nn.Dropout(p=dropout)
+        else:
+            self.dropout_layer = None
+
+        self.decoder = TorchFaDecoder(decoder_input_dim, n_outputs, seed)
         self._compiled = False
 
     def compile_model(self, mode: str = "reduce-overhead"):
@@ -157,9 +174,20 @@ class TorchFaNet(nn.Module):
         embed_dim = emb_flat.shape[-1]
         # 4. Restructurer en sequence pour LSTM : (batch, seq_len, embed_dim)
         emb_seq = emb_flat.view(B, self.seq_len, embed_dim)
-        # 5. LSTM : sortie (batch, seq_len, hidden_dim), dernier etat cache (1, batch, hidden_dim)
+        # 5. LSTM : sortie (batch, seq_len, hidden_dim * num_directions), dernier etat cache (num_layers * num_directions, batch, hidden_dim)
         _, (h_n, _) = self.lstm_layer(emb_seq)
-        last_hidden = h_n.squeeze(0)  # (batch, hidden_dim)
+        
+        if self.bidirectional:
+            # Concaténer le dernier état caché forward (h_n[-2]) et backward (h_n[-1]) de la dernière couche LSTM
+            h_forward = h_n[-2]
+            h_backward = h_n[-1]
+            last_hidden = torch.cat((h_forward, h_backward), dim=-1)  # (batch, hidden_dim * 2)
+        else:
+            last_hidden = h_n[-1]  # (batch, hidden_dim)
+
+        if self.dropout_layer is not None:
+            last_hidden = self.dropout_layer(last_hidden)
+            
         # 6. Attention ontologique moyenne sur la fenetre temporelle (pour FaImbalanceLoss)
         attn_g_mean = attn_g_flat.view(B, self.seq_len, self.n_features, -1).mean(dim=1)  # (batch, n_features, 16)
         attn_d_mean = attn_d_flat.view(B, self.seq_len, self.n_features, -1).mean(dim=1)
@@ -181,14 +209,20 @@ class TorchFaNet(nn.Module):
         if return_dual:
             emb, attn, attn_gauche, attn_droit = self.embedding(x, return_dual=True)
             h = self.hidden(emb)
+            if self.dropout_layer is not None:
+                h = self.dropout_layer(h)
             return self.decoder(h), attn_gauche, attn_droit
         elif return_attention:
             emb, attn = self.embedding(x, return_attention=True)
             h = self.hidden(emb)
+            if self.dropout_layer is not None:
+                h = self.dropout_layer(h)
             return self.decoder(h), attn
         else:
             emb = self.embedding(x)
             h = self.hidden(emb)
+            if self.dropout_layer is not None:
+                h = self.dropout_layer(h)
             return self.decoder(h)
 
     def forward_logits(self, x: torch.Tensor, return_dual: bool = False):
@@ -206,10 +240,14 @@ class TorchFaNet(nn.Module):
         if return_dual:
             emb, attn, attn_gauche, attn_droit = self.embedding(x, return_dual=True)
             h = self.hidden(emb)
+            if self.dropout_layer is not None:
+                h = self.dropout_layer(h)
             return self.decoder.forward_logits(h), attn_gauche, attn_droit
         else:
             emb = self.embedding(x)
             h = self.hidden(emb)
+            if self.dropout_layer is not None:
+                h = self.dropout_layer(h)
             return self.decoder.forward_logits(h)
 
     # ─── Entraînement ─────────────────────────────────────────────────────────
@@ -397,24 +435,44 @@ class TorchFaNet(nn.Module):
             Si return_attention: (preds, dus, attn(batch, n_features, 256))
             Si return_dual: (preds, dus, attn_g, attn_d)
         """
-        _validate_input(x, None, self.n_features)
+        expected_w = self.seq_len * self.n_features if self.seq_len > 0 else self.n_features
+        _validate_input(x, None, expected_w)
         self.eval()
         device = next(self.parameters()).device
         x_t = torch.tensor(np.atleast_2d(np.asarray(x, dtype=np.float32)), device=device)
 
+        if self.seq_len > 0:
+            last_h, attn_g, attn_d = self._embed_temporal(x_t)
+            preds, dus = self.decoder.forward_with_interpretation(last_h)
+            if return_dual:
+                return preds.cpu().numpy(), dus, attn_g.cpu().numpy(), attn_d.cpu().numpy()
+            elif return_attention:
+                attn_matrix = attn_g.unsqueeze(-1) * attn_d.unsqueeze(-2)
+                attn_weights = attn_matrix.view(x_t.shape[0], self.n_features, 256)
+                return preds.cpu().numpy(), dus, attn_weights.cpu().numpy()
+            else:
+                return preds.cpu().numpy(), dus
+
+        # Mode Tabulaire
         if return_dual:
             emb, attn, attn_g, attn_d = self.embedding(x_t, return_dual=True)
             h = self.hidden(emb)
+            if self.dropout_layer is not None:
+                h = self.dropout_layer(h)
             preds, dus = self.decoder.forward_with_interpretation(h)
             return preds.cpu().numpy(), dus, attn_g.cpu().numpy(), attn_d.cpu().numpy()
         elif return_attention:
             emb, attn = self.embedding(x_t, return_attention=True)
             h = self.hidden(emb)
+            if self.dropout_layer is not None:
+                h = self.dropout_layer(h)
             preds, dus = self.decoder.forward_with_interpretation(h)
             return preds.cpu().numpy(), dus, attn.cpu().numpy()
         else:
             emb = self.embedding(x_t)
             h = self.hidden(emb)
+            if self.dropout_layer is not None:
+                h = self.dropout_layer(h)
             preds, dus = self.decoder.forward_with_interpretation(h)
             return preds.cpu().numpy(), dus
 
@@ -470,6 +528,12 @@ class TorchFaNet(nn.Module):
             "hidden_dim": self.hidden_dim,
             "n_outputs": self.n_outputs,
             "activation": self.activation_name,
+            "x_min": self.x_min,
+            "x_max": self.x_max,
+            "seq_len": self.seq_len,
+            "bidirectional": self.bidirectional,
+            "num_layers": self.num_layers,
+            "dropout": self.dropout_val,
             "version": self.VERSION,
             "kb_hash": get_kb_hash(),
         }, path)
@@ -496,6 +560,12 @@ class TorchFaNet(nn.Module):
             hidden_dim=data["hidden_dim"],
             n_outputs=data["n_outputs"],
             activation=data.get("activation", "fa_sigma"),
+            x_min=data.get("x_min", 0.0),
+            x_max=data.get("x_max", 1.0),
+            seq_len=data.get("seq_len", 0),
+            bidirectional=data.get("bidirectional", False),
+            num_layers=data.get("num_layers", 1),
+            dropout=data.get("dropout", 0.0),
             **kwargs,
         )
         net.load_state_dict(data["state_dict"])
@@ -556,6 +626,10 @@ class TorchFaNet(nn.Module):
             "x_min": self.x_min,
             "x_max": self.x_max,
             "seed": self.seed,
+            "seq_len": self.seq_len,
+            "bidirectional": self.bidirectional,
+            "num_layers": self.num_layers,
+            "dropout": self.dropout_val,
         }
 
     def set_params(self, **params) -> "TorchFaNet":

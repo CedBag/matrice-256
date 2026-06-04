@@ -1,14 +1,34 @@
+LICENCE DE RECHERCHE ACADÉMIQUE ET D'ÉVALUATION MATRICE-256 (BOKONO)
+==================================================================
+
 Copyright (c) 2026 Cedoque BAGBONON — Projet Matrice-256.
 Tous droits réservés.
 
-L'intégralité du code source (bokono), des bases de données associées (data/), 
-et des formulations mathématiques (FaNet, Matrice-256, FaSigma, FaReLU, FaEmbedding)
-incluses dans ce dépôt est la propriété exclusive de Cedoque BAGBONON (Projet Matrice-256).
+L'intégralité du code source (bokono), des fichiers de données associés, des configurations, et des formulations mathématiques (incluant FaNet, la perte FaImbalanceLoss, l'embedding combinatoire TorchFaEmbedding, et les fonctions d'activation associées) est la propriété intellectuelle exclusive de Cedoque BAGBONON.
 
-Il est STRICTEMENT INTERDIT de :
-1. Copier, reproduire, ou publier ce code, en tout ou en partie, publiquement ou en privé.
-2. Modifier, adapter ou créer des œuvres dérivées basées sur cette architecture.
-3. Utiliser cet algorithme (FaNet) à des fins commerciales ou de recherche sans un accord explicite, écrit et signé par le propriétaire.
-4. Révéler le contenu de la base de données Fâ (secret industriel) à des tiers.
+Cette licence définit les termes d'utilisation, de lecture et d'évaluation du logiciel.
 
-Tout contrevenant s'expose à des poursuites judiciaires internationales en vertu des lois sur la protection des logiciels, de la propriété intellectuelle, et des secrets d'affaires.
+1. CONCESSION DE LICENCE D'ÉVALUATION ET DE RECHERCHE
+-----------------------------------------------------
+Par la présente, l'auteur concède à tout utilisateur le droit non exclusif, non transférable et gratuit de :
+* Cloner, lire et inspecter le code source à des fins d'évaluation académique, d'audit de sécurité, et de vérification scientifique par les pairs (peer-review).
+* Exécuter le code localement à des fins exclusives de recherche scientifique non commerciale et d'expérimentation personnelle.
+
+2. USAGES STRICTEMENT INTERDITS (SANS ACCORD ÉCRIT PRÉALABLE)
+-------------------------------------------------------------
+Il est strictement interdit de :
+* Utiliser ce logiciel, en tout ou en partie, à des fins commerciales, industrielles ou lucratives.
+* Modifier, adapter, altérer ou créer des œuvres dérivées basées sur le code source de cette bibliothèque.
+* Redistribuer, republier, sous-licencier ou vendre le code source ou ses dérivés à des tiers sous forme de package, d'API web ou par tout autre canal de distribution.
+* Déposer des demandes de brevets, de droits d'auteur ou de titres de propriété intellectuelle reposant sur l'architecture mathématique et combinatoire divulguée dans ce dépôt.
+* Révéler, publier ou exposer des parties de la base de données Fâ privée (secret industriel) non incluses dans la version publique.
+
+3. DISCLAMER (LIMITATION DE GARANTIE ET DE RESPONSABILITÉ)
+----------------------------------------------------------
+CE LOGICIEL EST FOURNI « EN L'ÉTAT » (AS IS), SANS GARANTIE D'AUCUNE SORTE, EXPRESSE OU IMPLICITE, Y COMPRIS MAIS SANS S'Y LIMITER, LES GARANTIES DE QUALITÉ MARCHANDE, D'ADÉQUATION À UN USAGE PARTICULIER ET DE NON-CONTREFAÇON. 
+EN AUCUN CAS L'AUTEUR NE POURRA ÊTRE TENU RESPONSABLE DE TOUTE RÉCLAMATION, DOMMAGE OU AUTRE RESPONSABILITÉ, QUE CE SOIT DANS LE CADRE D'UN CONTRAT, D'UN DÉLIT OU AUTREMENT, DÉCOULANT DE, LIÉ À OU EN RELATION AVEC LE LOGICIEL OU SON UTILISATION.
+
+4. DEMANDES D'AUTORISATIONS ET CONTACT
+--------------------------------------
+Pour toute demande de licence commerciale, de collaboration industrielle, d'autorisation de modification ou de partenariat académique étendu, veuillez contacter directement l'auteur à l'adresse email suivante :
+* **Email :** projet.matrice256@protonmail.com

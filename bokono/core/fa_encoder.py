@@ -68,12 +68,16 @@ _KB_PRIVATE_PATH = os.path.join(
 _KB_PUBLIC_PATH = os.path.join(
     os.path.dirname(__file__), "..", "..", "data", "knowledge_base", "fa_knowledge_public.json"
 )
+_KB_PACKAGE_PATH = os.path.join(
+    os.path.dirname(__file__), "fa_knowledge_public.json"
+)
 
 
 def _load_knowledge_base() -> list[dict]:
-    """Charge la base de connaissance Fâ (lazy loading avec Fallback privé/public)."""
+    """Charge la base de connaissance Fâ (lazy loading avec Fallback privé/public/package)."""
     path_priv = os.path.normpath(_KB_PRIVATE_PATH)
     path_pub = os.path.normpath(_KB_PUBLIC_PATH)
+    path_pkg = os.path.normpath(_KB_PACKAGE_PATH)
     
     # 1. Tente de charger la vraie intelligence (Usage Propriétaire Local)
     if os.path.exists(path_priv):
@@ -91,8 +95,16 @@ def _load_knowledge_base() -> list[dict]:
         except json.JSONDecodeError as e:
             raise ValueError(f"Fichier de base de connaissance corrompu (Public) : {e}")
             
+    # 3. Fallback de sécurité package (Usage après pip install)
+    if os.path.exists(path_pkg):
+        try:
+            with open(path_pkg, encoding="utf-8") as f:
+                return json.load(f)
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Fichier de base de connaissance corrompu (Package) : {e}")
+            
     raise FileNotFoundError(
-        f"Base de connaissance (Publique ou Privée) introuvable dans data/knowledge_base/\n"
+        f"Base de connaissance introuvable dans data/knowledge_base/ ou dans le package bokono/core/\n"
     )
 
 _KB: Optional[list[dict]] = None  # Cache en mémoire

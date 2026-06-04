@@ -9,7 +9,7 @@ description = "Bibliothèque algorithmique et ML fondée sur la logique binaire 
 readme = "README.md"
 license = {text = "Proprietary Software"}
 authors = [
-    {name = "Cedoque BAGBONON - Projet Matrice-256", email = "contact@matrice256.bj"}
+    {name = "Cedoque BAGBONON - Projet Matrice-256", email = "projet.matrice256@protonmail.com"}
 ]
 keywords = ["fa", "benin", "machine-learning", "divination", "bokono", "african-ai", "proprietary"]
 classifiers = [
@@ -41,3 +41,7 @@ testpaths = ["tests"]
 
 [tool.setuptools.packages.find]
 include = ["bokono*"]
+
+[tool.setuptools.package-data]
+"bokono.core" = ["fa_knowledge_public.json"]
+
