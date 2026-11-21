@@ -78,7 +78,22 @@ class TestFaNetV30Network:
         return TorchFaNet(n_features=5, hidden_dim=16, n_outputs=1, seed=42)
 
     def test_version_bump(self, fanet_v3):
-        assert fanet_v3.VERSION == "4.1.0"
+        assert fanet_v3.VERSION == "4.2.0"
+
+    def test_hypercube_keys_geometry(self, fanet_v3):
+        """Vérifie que les 16 clés K_16 forment l'hypercube binaire exact {-1, +1}^4."""
+        K = fanet_v3.embedding.kpoli_table
+        assert K.shape == (16, 4)
+        assert torch.all((K == 1.0) | (K == -1.0))
+        # GBE (0000) = [+1,+1,+1,+1], IKA (1111) = [-1,-1,-1,-1]
+        assert torch.all(K[0] == 1.0)
+        assert torch.all(K[15] == -1.0)
+
+    def test_lstm_summary_runs(self):
+        """Vérifie que summary() ne plante plus en mode LSTM."""
+        net_lstm = TorchFaNet(n_features=3, hidden_dim=16, seq_len=6, bidirectional=True)
+        net_lstm.summary()
+        assert net_lstm.count_parameters() > 0
         
     def test_end_to_end_training_combinatorial(self, fanet_v3):
         """Test rapide d'apprentissage."""

@@ -246,8 +246,8 @@ class TestTorchFaDecoder:
 
 class TestTorchFaNet:
 
-    def test_version_is_41(self, net):
-        assert net.VERSION == "4.1.0"
+    def test_version_is_42(self, net):
+        assert net.VERSION == "4.2.0"
 
     def test_is_nn_module(self, net):
         assert isinstance(net, nn.Module)
@@ -270,7 +270,7 @@ class TestTorchFaNet:
     def test_summary_runs(self, net, capsys):
         net.summary()
         captured = capsys.readouterr()
-        assert "v4.1.0" in captured.out
+        assert "v4.2.0" in captured.out
         assert "PyTorch" in captured.out
 
     def test_predict_returns_du(self, net, X_np):

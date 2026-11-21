@@ -157,8 +157,10 @@ def safe_wilcoxon(a: np.ndarray, b: np.ndarray) -> tuple[float, float]:
 
 class IsoMLP(nn.Module):
     """
-    Baseline MLP PyTorch iso-paramètres face à TorchFaNet :
-      Input(n_features) -> Linear(n, 4*n) -> ReLU -> Linear(4*n, hidden_dim) -> ReLU -> Dropout -> Linear(hidden_dim, 1)
+    Baseline MLP PyTorch iso-paramètres face à TorchFaNet v4.2 :
+      Input(n_features) -> Linear(n, 4*n) -> ReLU
+      -> Linear(4*n, hidden_dim) -> ReLU
+      -> Linear(hidden_dim, hidden_dim) -> ReLU (+ résiduel) -> Dropout -> Linear(hidden_dim, 1)
     """
 
     def __init__(
@@ -174,17 +176,17 @@ class IsoMLP(nn.Module):
         self.task = task
         self.seed = seed
         embed_dim = n_features * 4
-        self.net = nn.Sequential(
-            nn.Linear(n_features, embed_dim),
-            nn.ReLU(),
-            nn.Linear(embed_dim, hidden_dim),
-            nn.ReLU(),
-            nn.Dropout(p=dropout),
-            nn.Linear(hidden_dim, 1),
-        )
+        self.in_proj = nn.Sequential(nn.Linear(n_features, embed_dim), nn.ReLU())
+        self.fc1 = nn.Sequential(nn.Linear(embed_dim, hidden_dim), nn.ReLU())
+        self.fc2 = nn.Sequential(nn.Linear(hidden_dim, hidden_dim), nn.ReLU())
+        self.drop = nn.Dropout(p=dropout)
+        self.head = nn.Linear(hidden_dim, 1)
 
     def forward_logits(self, x: torch.Tensor) -> torch.Tensor:
-        return self.net(x.to(torch.float32))
+        e = self.in_proj(x.to(torch.float32))
+        h1 = self.fc1(e)
+        h = h1 + self.fc2(h1)
+        return self.head(self.drop(h))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         z = self.forward_logits(x)
@@ -206,14 +208,12 @@ class IsoMLP(nn.Module):
         weight_decay: float = 1e-4,
         early_stopping_patience: int = 15,
     ) -> None:
-        from torch.utils.data import DataLoader, TensorDataset
-
         device = next(self.parameters()).device
-        X_t = torch.tensor(np.asarray(X, dtype=np.float32))
-        y_t = torch.tensor(np.asarray(y, dtype=np.float32)).reshape(-1, 1)
-        rng = torch.Generator()
-        rng.manual_seed(self.seed)
-        loader = DataLoader(TensorDataset(X_t, y_t), batch_size=batch_size, shuffle=True, generator=rng)
+        X_dev = torch.tensor(np.asarray(X, dtype=np.float32), device=device)
+        y_dev = torch.tensor(np.asarray(y, dtype=np.float32), device=device).reshape(-1, 1)
+        n_samples = X_dev.shape[0]
+        gen = torch.Generator(device=device)
+        gen.manual_seed(self.seed)
         opt = torch.optim.AdamW(self.parameters(), lr=lr, weight_decay=weight_decay)
 
         pw_t = torch.tensor([float(pos_weight)], dtype=torch.float32, device=device)
@@ -232,11 +232,12 @@ class IsoMLP(nn.Module):
 
         self.train()
         for _ in range(epochs):
-            for xb, yb in loader:
-                xb, yb = xb.to(device), yb.to(device)
-                opt.zero_grad()
-                out = self.forward_logits(xb)
-                loss = loss_fn(out, yb)
+            perm = torch.randperm(n_samples, generator=gen, device=device)
+            for i in range(0, n_samples, batch_size):
+                idx = perm[i : i + batch_size]
+                opt.zero_grad(set_to_none=True)
+                out = self.forward_logits(X_dev[idx])
+                loss = loss_fn(out, y_dev[idx])
                 loss.backward()
                 opt.step()
 
@@ -1378,12 +1379,16 @@ def run_exp8_efficiency(
         "f1": f1_fa,
     })
 
-    # 5. FaNet v4.1 ONNX Runtime (si onnx et onnxruntime sont disponibles)
+    # 5. FaNet v4.2 ONNX Runtime (optimisé 1 thread CPU pour petits batchs Edge)
     try:
         import onnxruntime as ort
-        onnx_path = str(out_dir / "fanet_v41_pima.onnx")
+        onnx_path = str(out_dir / "fanet_v42_pima.onnx")
         fanet_cpu.export_onnx(onnx_path)
-        sess = ort.InferenceSession(onnx_path, providers=["CPUExecutionProvider"])
+        so = ort.SessionOptions()
+        so.intra_op_num_threads = 1
+        so.inter_op_num_threads = 1
+        so.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+        sess = ort.InferenceSession(onnx_path, sess_options=so, providers=["CPUExecutionProvider"])
         inp_name = sess.get_inputs()[0].name
         t_inf_ox, kwh_inf_ox, _ = measure_fn(
             "eff_fanet_onnx",
@@ -1467,7 +1472,7 @@ def write_summary_report(
     exp8: pd.DataFrame,
 ) -> None:
     lines = [
-        "# Rapport de benchmarks scientifiques v5.0 : Matrice-256 (FaNet v4.1)",
+        "# Rapport de benchmarks scientifiques v5.0 : Matrice-256 (FaNet v4.2)",
         "",
         f"- Date : {meta['timestamp']}",
         f"- Plateforme : {meta['platform']}",
@@ -1540,7 +1545,7 @@ def main() -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     print("=" * 85)
-    print("  MATRICE-256 (FaNet v4.1) : SUITE SCIENTIFIQUE v5.0")
+    print("  MATRICE-256 (FaNet v4.2) : SUITE SCIENTIFIQUE v5.0")
     print(f"  Device : {device} ({gpu_name}) | Mode : {'QUICK' if args.quick else 'FULL'}")
     print(f"  Sortie : {out_dir}")
     print("=" * 85)

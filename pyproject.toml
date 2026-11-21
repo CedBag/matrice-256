@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "bokono"
-version = "4.1.0"
+version = "4.2.0"
 description = "Bibliothèque algorithmique et ML neuro-symbolique fondée sur la logique binaire du Fâ (Bénin)"
 readme = "README.md"
 license = {text = "Academic Research and Evaluation License"}

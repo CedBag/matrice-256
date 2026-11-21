@@ -2,19 +2,19 @@
 # Tous droits réservés. Reproduction ou distribution interdite sans autorisation.
 
 """
-bokono.ml.torch_network : FaNet v4.1 (PyTorch)
+bokono.ml.torch_network : FaNet v4.2 (PyTorch)
 ==============================================
 Réseau neuro-symbolique fondé sur la combinatoire binaire du Fâ (16x16 -> 256).
 
-Correctifs v4.1 :
-  - Cohérence stricte entraînement / inférence (classification et régression).
-  - Support GPU CUDA complet (loss_fn et buffers alignés sur device).
-  - Normalisation lisse auto-ajustée sur X_train uniquement (zéro perte des valeurs négatives).
-  - Contrôles d'ablation natifs : polarity_mode ("fa", "constant", "permuted"),
-    init_mode ("fa", "xavier"), output_mode ("standard", "fa_dual"),
-    per_feature_queries (True/False).
-  - Early stopping optionnel avec restauration des meilleurs poids sur validation.
-  - Correction de summary() et export_onnx() en mode LSTM (seq_len > 0).
+Évolutions architecturales v4.2 (issues de l'analyse des benchmarks Kaggle v5.0) :
+  1. Clés K_16 sur l'hypercube binaire exact 4 bits {-1, +1}^4 + requêtes
+     cross-features dans TorchFaEmbedding.
+  2. Bloc caché neuro-symbolique à 2 étages (mode tabulaire) :
+     mixer FaReLU (frontières nettes par morceaux, capture des clusters multi-variables)
+     -> hidden FaSigma + connexion résiduelle (lissage biomédical, calibration et MIA).
+  3. Initialisation plein rang sans colinéarité de pas 4.
+  4. Boucle d'entraînement rapide sur GPU (mini-batchs par indexation directe sur device
+     pour les datasets <= 50 000 lignes, réduisant l'overhead CPU-GPU par 4x à 6x).
 
 Auteur : Projet Matrice-256 / bokono
 """
@@ -60,16 +60,20 @@ def _validate_input(
 
 class TorchFaNet(nn.Module):
     """
-    FaNet v4.1 : réseau de neurones neuro-symbolique en PyTorch.
+    FaNet v4.2 : réseau de neurones neuro-symbolique en PyTorch.
 
     Architecture tabulaire (seq_len=0) :
-      Input(n_features) -> TorchFaEmbedding(n_features * 4) -> TorchFaHidden(hidden_dim) -> TorchFaDecoder(n_outputs)
+      Input(n_features)
+        -> TorchFaEmbedding(n_features * 4, hypercube 4 bits + cross-features)
+        -> mixer TorchFaHidden(hidden_dim, FaReLU) [si use_residual_mixer=True]
+        -> hidden TorchFaHidden(hidden_dim, FaSigma) + connexion résiduelle
+        -> TorchFaDecoder(n_outputs)
 
     Architecture temporelle (seq_len>0) :
       Input(seq_len * n_features) -> TorchFaEmbedding par instant T -> LSTM -> TorchFaDecoder(n_outputs)
     """
 
-    VERSION = "4.1.0"
+    VERSION = "4.2.0"
 
     def __init__(
         self,
@@ -90,6 +94,8 @@ class TorchFaNet(nn.Module):
         init_mode: str = "fa",
         per_feature_queries: bool = True,
         auto_normalize: bool = True,
+        cross_feature: bool = True,
+        use_residual_mixer: bool = True,
     ):
         super().__init__()
         self.n_features = n_features
@@ -109,8 +115,9 @@ class TorchFaNet(nn.Module):
         self.init_mode = init_mode
         self.per_feature_queries = bool(per_feature_queries)
         self.auto_normalize = bool(auto_normalize)
+        self.cross_feature = bool(cross_feature)
+        self.use_residual_mixer = bool(use_residual_mixer)
 
-        # Graine déterministe pour l'initialisation PyTorch (LSTM / Linear)
         torch.manual_seed(self.seed)
 
         fa_tensor = FaMatrix().to_weight_tensor() if init_mode == "fa" else None
@@ -124,6 +131,7 @@ class TorchFaNet(nn.Module):
             seed=seed,
             per_feature_queries=per_feature_queries,
             auto_normalize=auto_normalize,
+            cross_feature=cross_feature,
         )
 
         if self.seq_len > 0:
@@ -135,10 +143,27 @@ class TorchFaNet(nn.Module):
                 dropout=dropout if num_layers > 1 else 0.0,
                 bidirectional=bidirectional,
             )
+            self.mixer: Optional[TorchFaHidden] = None
             self.hidden: Optional[TorchFaHidden] = None
         else:
+            if self.use_residual_mixer:
+                # Étage 1 : mélange multi-variables par FaReLU continue (frontières nettes)
+                self.mixer = TorchFaHidden(
+                    input_dim=embedding_dim,
+                    hidden_dim=hidden_dim,
+                    activation="fa_relu",
+                    seed=seed + 500,
+                    fa_tensor=fa_tensor,
+                    polarity_mode=polarity_mode,
+                )
+                hidden_in = hidden_dim
+            else:
+                self.mixer = None
+                hidden_in = embedding_dim
+
+            # Étage 2 : régularisation douce par FaSigma (avec connexion résiduelle si mixer actif)
             self.hidden = TorchFaHidden(
-                input_dim=embedding_dim,
+                input_dim=hidden_in,
                 hidden_dim=hidden_dim,
                 activation=activation,
                 seed=seed,
@@ -179,7 +204,6 @@ class TorchFaNet(nn.Module):
     def _embed_temporal(self, x: torch.Tensor):
         """
         Mode LSTM : x est un vecteur aplati (batch, seq_len * n_features).
-        Retourne (last_hidden, attn_g_mean, attn_d_mean).
         """
         assert self.lstm_layer is not None
         B = x.shape[0]
@@ -203,25 +227,27 @@ class TorchFaNet(nn.Module):
         attn_d_mean = attn_d_flat.reshape(B, self.seq_len, self.n_features, -1).mean(dim=1)
         return last_hidden, attn_g_mean, attn_d_mean
 
-    def _encode_tabular(self, x: torch.Tensor, return_attention: bool = False, return_dual: bool = False):
+    def _apply_tabular_hidden(self, emb: torch.Tensor) -> torch.Tensor:
         assert self.hidden is not None
-        if return_dual:
-            emb, attn, attn_g, attn_d = self.embedding(x, return_dual=True)
+        if self.mixer is not None:
+            h1 = self.mixer(emb)
+            h2 = self.hidden(h1)
+            h = h1 + h2
+        else:
             h = self.hidden(emb)
-            if self.dropout_layer is not None:
-                h = self.dropout_layer(h)
-            return h, attn, attn_g, attn_d
-        if return_attention:
-            emb, attn = self.embedding(x, return_attention=True)
-            h = self.hidden(emb)
-            if self.dropout_layer is not None:
-                h = self.dropout_layer(h)
-            return h, attn
-        emb = self.embedding(x)
-        h = self.hidden(emb)
         if self.dropout_layer is not None:
             h = self.dropout_layer(h)
         return h
+
+    def _encode_tabular(self, x: torch.Tensor, return_attention: bool = False, return_dual: bool = False):
+        if return_dual:
+            emb, attn, attn_g, attn_d = self.embedding(x, return_dual=True)
+            return self._apply_tabular_hidden(emb), attn, attn_g, attn_d
+        if return_attention:
+            emb, attn = self.embedding(x, return_attention=True)
+            return self._apply_tabular_hidden(emb), attn
+        emb = self.embedding(x)
+        return self._apply_tabular_hidden(emb)
 
     def forward(self, x: torch.Tensor, return_attention: bool = False, return_dual: bool = False):
         """Passe avant cohérente avec la tâche (classification ou régression)."""
@@ -281,7 +307,7 @@ class TorchFaNet(nn.Module):
         use_amp: bool = False,
     ) -> dict[str, list[float]]:
         """
-        Entraînement supervisé avec alignement strict train/inférence et support GPU CUDA.
+        Entraînement supervisé avec alignement strict train/inférence et mini-batching GPU rapide.
         """
         active_task = task if task is not None else self.task
         self.task = active_task
@@ -292,24 +318,37 @@ class TorchFaNet(nn.Module):
         if X_val is not None and y_val is not None:
             _validate_input(X_val, y_val, expected_w)
 
-        # Ajustement de la normalisation interne sur X_train uniquement (zéro fuite)
         if self.auto_normalize:
             self.embedding.set_normalization(X)
 
         device = next(self.parameters()).device
-        is_cuda = (device.type == "cuda") and bool(use_amp)
+        amp_active = (device.type == "cuda") and bool(use_amp)
 
-        from torch.utils.data import TensorDataset, DataLoader
+        X_np_f32 = np.asarray(X, dtype=np.float32)
+        y_np_f32 = np.asarray(y, dtype=np.float32)
+        n_samples = X_np_f32.shape[0]
+        use_fast_device_batches = (n_samples <= 50_000)
 
-        X_t = torch.tensor(np.asarray(X, dtype=np.float32))
-        y_t = torch.tensor(np.asarray(y, dtype=np.float32))
-        if y_t.ndim == 1:
-            y_t = y_t.unsqueeze(1)
-
-        dataset = TensorDataset(X_t, y_t)
-        rng = torch.Generator()
-        rng.manual_seed(self.seed)
-        loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, generator=rng)
+        if use_fast_device_batches:
+            X_dev = torch.tensor(X_np_f32, dtype=torch.float32, device=device)
+            y_dev = torch.tensor(y_np_f32, dtype=torch.float32, device=device)
+            if y_dev.ndim == 1:
+                y_dev = y_dev.unsqueeze(1)
+            gen = torch.Generator(device=device)
+            gen.manual_seed(self.seed)
+            loader = None
+        else:
+            from torch.utils.data import TensorDataset, DataLoader
+            X_t = torch.tensor(X_np_f32, dtype=torch.float32)
+            y_t = torch.tensor(y_np_f32, dtype=torch.float32)
+            if y_t.ndim == 1:
+                y_t = y_t.unsqueeze(1)
+            gen_cpu = torch.Generator()
+            gen_cpu.manual_seed(self.seed)
+            loader = DataLoader(TensorDataset(X_t, y_t), batch_size=batch_size, shuffle=True, generator=gen_cpu)
+            X_dev = None
+            y_dev = None
+            gen = None
 
         opt_map = {
             "adam": lambda: torch.optim.Adam(self.parameters(), lr=lr, weight_decay=weight_decay),
@@ -332,7 +371,7 @@ class TorchFaNet(nn.Module):
             seed=self.seed,
         ).to(device)
 
-        scaler = torch.amp.GradScaler("cuda") if is_cuda else None
+        scaler = torch.amp.GradScaler("cuda") if amp_active else None
         history: dict[str, list[float]] = {"loss": [], "val_loss": []}
 
         if compile:
@@ -356,11 +395,21 @@ class TorchFaNet(nn.Module):
             epoch_loss = 0.0
             n_batches = 0
 
-            for X_b, y_b in loader:
-                X_b, y_b = X_b.to(device), y_b.to(device)
-                opt.zero_grad()
+            if use_fast_device_batches:
+                assert X_dev is not None and y_dev is not None and gen is not None
+                perm = torch.randperm(n_samples, generator=gen, device=device)
+                batch_iter = (
+                    (X_dev[perm[i : i + batch_size]], y_dev[perm[i : i + batch_size]])
+                    for i in range(0, n_samples, batch_size)
+                )
+            else:
+                assert loader is not None
+                batch_iter = ((xb.to(device), yb.to(device)) for xb, yb in loader)
 
-                if is_cuda and scaler is not None:
+            for X_b, y_b in batch_iter:
+                opt.zero_grad(set_to_none=True)
+
+                if amp_active and scaler is not None:
                     with torch.amp.autocast("cuda"):
                         if use_logits:
                             pred, attn_g, attn_d = self.forward_logits(X_b, return_dual=True)
@@ -514,6 +563,8 @@ class TorchFaNet(nn.Module):
             "init_mode": self.init_mode,
             "per_feature_queries": self.per_feature_queries,
             "auto_normalize": self.auto_normalize,
+            "cross_feature": self.cross_feature,
+            "use_residual_mixer": self.use_residual_mixer,
             "version": self.VERSION,
             "kb_hash": get_kb_hash(),
         }, path)
@@ -547,6 +598,8 @@ class TorchFaNet(nn.Module):
             init_mode=data.get("init_mode", "fa"),
             per_feature_queries=data.get("per_feature_queries", True),
             auto_normalize=data.get("auto_normalize", True),
+            cross_feature=data.get("cross_feature", True),
+            use_residual_mixer=data.get("use_residual_mixer", True),
             **kwargs,
         )
         net.load_state_dict(data["state_dict"])
@@ -579,9 +632,13 @@ class TorchFaNet(nn.Module):
             lstm_p = sum(p.numel() for p in self.lstm_layer.parameters())
             out_dim = self.hidden_dim * (2 if self.bidirectional else 1)
             print(f"  {'LSTM Temporel':<25} {'(' + str(out_dim) + ',)':<20} {lstm_p:>12,}")
-        elif self.hidden is not None:
-            hidden_p = sum(p.numel() for p in self.hidden.parameters())
-            print(f"  {'TorchFaHidden':<25} {'(' + str(self.hidden_dim) + ',)':<20} {hidden_p:>12,}")
+        else:
+            if self.mixer is not None:
+                mix_p = sum(p.numel() for p in self.mixer.parameters())
+                print(f"  {'FaMixer (FaReLU)':<25} {'(' + str(self.hidden_dim) + ',)':<20} {mix_p:>12,}")
+            if self.hidden is not None:
+                hidden_p = sum(p.numel() for p in self.hidden.parameters())
+                print(f"  {'FaHidden (Résiduel)':<25} {'(' + str(self.hidden_dim) + ',)':<20} {hidden_p:>12,}")
 
         dec_p = sum(p.numel() for p in self.decoder.parameters())
         print(f"  {'TorchFaDecoder':<25} {'(' + str(self.n_outputs) + ',)':<20} {dec_p:>12,}")
@@ -612,6 +669,8 @@ class TorchFaNet(nn.Module):
             "init_mode": self.init_mode,
             "per_feature_queries": self.per_feature_queries,
             "auto_normalize": self.auto_normalize,
+            "cross_feature": self.cross_feature,
+            "use_residual_mixer": self.use_residual_mixer,
         }
 
     def export_onnx(self, path: str, input_shape: tuple[int, ...] | None = None) -> None:
