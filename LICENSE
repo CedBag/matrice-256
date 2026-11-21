@@ -1,34 +1,82 @@
-LICENCE DE RECHERCHE ACADÉMIQUE ET D'ÉVALUATION MATRICE-256 (BOKONO)
-==================================================================
+LICENCE DE RECHERCHE ACADÉMIQUE ET D'ÉVALUATION - MATRICE-256 (BOKONO)
+======================================================================
 
-Copyright (c) 2026 Cedoque BAGBONON — Projet Matrice-256.
+Copyright (c) 2026 Cedoque BAGBONON, Projet Matrice-256.
 Tous droits réservés.
 
-L'intégralité du code source (bokono), des fichiers de données associés, des configurations, et des formulations mathématiques (incluant FaNet, la perte FaImbalanceLoss, l'embedding combinatoire TorchFaEmbedding, et les fonctions d'activation associées) est la propriété intellectuelle exclusive de Cedoque BAGBONON.
+La présente licence régit l'accès, la lecture, l'exécution et l'évaluation
+du logiciel "bokono" (Projet Matrice-256 / FaNet), incluant son code source,
+ses modules d'architecture (TorchFaEmbedding, TorchFaHidden, TorchFaDecoder,
+FaImbalanceLoss et activations associées), ses scripts de test et sa
+documentation technique.
 
-Cette licence définit les termes d'utilisation, de lecture et d'évaluation du logiciel.
+1. PÉRIMÈTRE DE PROPRIÉTÉ INTELLECTUELLE ET RESPECT DU PATRIMOINE CULTUREL
+--------------------------------------------------------------------------
+L'implémentation logicielle, l'architecture informatique, le code source,
+les jeux de paramètres dérivés et la documentation originale présents dans
+ce dépôt sont la propriété intellectuelle exclusive de Cedoque BAGBONON.
 
-1. CONCESSION DE LICENCE D'ÉVALUATION ET DE RECHERCHE
------------------------------------------------------
-Par la présente, l'auteur concède à tout utilisateur le droit non exclusif, non transférable et gratuit de :
-* Cloner, lire et inspecter le code source à des fins d'évaluation académique, d'audit de sécurité, et de vérification scientifique par les pairs (peer-review).
-* Exécuter le code localement à des fins exclusives de recherche scientifique non commerciale et d'expérimentation personnelle.
+La présente licence ne revendique aucune appropriation exclusive du
+patrimoine culturel immatériel du Fâ béninois et ouest-africain, qui
+demeure un patrimoine collectif historique. Toute référence académique ou
+scientifique à ce travail doit mentionner de manière appropriée l'auteur du
+logiciel ainsi que l'ancrage culturel béninois dont s'inspire la
+formalisation combinatoire.
 
-2. USAGES STRICTEMENT INTERDITS (SANS ACCORD ÉCRIT PRÉALABLE)
--------------------------------------------------------------
-Il est strictement interdit de :
-* Utiliser ce logiciel, en tout ou en partie, à des fins commerciales, industrielles ou lucratives.
-* Modifier, adapter, altérer ou créer des œuvres dérivées basées sur le code source de cette bibliothèque.
-* Redistribuer, republier, sous-licencier ou vendre le code source ou ses dérivés à des tiers sous forme de package, d'API web ou par tout autre canal de distribution.
-* Déposer des demandes de brevets, de droits d'auteur ou de titres de propriété intellectuelle reposant sur l'architecture mathématique et combinatoire divulguée dans ce dépôt.
-* Révéler, publier ou exposer des parties de la base de données Fâ privée (secret industriel) non incluses dans la version publique.
+2. DROITS ACCORDÉS (RECHERCHE ACADÉMIQUE ET ÉVALUATION)
+-------------------------------------------------------
+L'auteur accorde gratuitement à tout utilisateur une licence non exclusive,
+non transférable et révocable permettant de :
+- Cloner, lire et inspecter le code source à des fins d'évaluation
+  académique, d'audit technique ou de vérification scientifique par les
+  pairs (peer-review).
+- Exécuter le logiciel localement à des fins strictement non commerciales
+  de recherche scientifique, d'enseignement ou de reproduction des
+  expériences publiées.
+- Citer le dépôt, ses résultats et sa documentation dans des publications
+  académiques, rapports d'étude ou mémoires, sous réserve de mentionner
+  l'auteur et l'URL officielle du projet.
 
-3. DISCLAMER (LIMITATION DE GARANTIE ET DE RESPONSABILITÉ)
-----------------------------------------------------------
-CE LOGICIEL EST FOURNI « EN L'ÉTAT » (AS IS), SANS GARANTIE D'AUCUNE SORTE, EXPRESSE OU IMPLICITE, Y COMPRIS MAIS SANS S'Y LIMITER, LES GARANTIES DE QUALITÉ MARCHANDE, D'ADÉQUATION À UN USAGE PARTICULIER ET DE NON-CONTREFAÇON. 
-EN AUCUN CAS L'AUTEUR NE POURRA ÊTRE TENU RESPONSABLE DE TOUTE RÉCLAMATION, DOMMAGE OU AUTRE RESPONSABILITÉ, QUE CE SOIT DANS LE CADRE D'UN CONTRAT, D'UN DÉLIT OU AUTREMENT, DÉCOULANT DE, LIÉ À OU EN RELATION AVEC LE LOGICIEL OU SON UTILISATION.
+3. USAGES INTERDITS SANS AUTORISATION ÉCRITE PRÉALABLE
+------------------------------------------------------
+Sauf accord écrit préalable de l'auteur, il est strictement interdit de :
+- Utiliser ce logiciel, en tout ou en partie, à des fins commerciales,
+  industrielles, lucratives ou au sein d'un produit ou service payant.
+- Redistribuer, republier, sous-licencier, vendre ou proposer ce code
+  source ou ses dérivés à des tiers (y compris sous forme de package, de
+  service hébergé ou d'API).
+- Créer et diffuser publiquement des oeuvres dérivées commerciales ou des
+  forks redistribués sans autorisation explicite.
+- Déposer des brevets ou autres titres de propriété industrielle portant
+  sur l'implémentation logicielle divulguée dans ce dépôt sans le
+  consentement écrit de l'auteur.
+- Tenter d'extraire, de reconstruire ou de publier des éléments de la base
+  de données privée non incluse dans ce dépôt public.
 
-4. DEMANDES D'AUTORISATIONS ET CONTACT
---------------------------------------
-Pour toute demande de licence commerciale, de collaboration industrielle, d'autorisation de modification ou de partenariat académique étendu, veuillez contacter directement l'auteur à l'adresse email suivante :
-* **Email :** projet.matrice256@protonmail.com
+4. LIMITATION DE GARANTIE ET DE RESPONSABILITÉ (DISCLAIMER)
+-----------------------------------------------------------
+CE LOGICIEL EST FOURNI "EN L'ÉTAT" (AS IS), SANS GARANTIE D'AUCUNE SORTE,
+EXPRESSE OU IMPLICITE, Y COMPRIS, SANS S'Y LIMITER, LES GARANTIES DE
+QUALITÉ MARCHANDE, D'ADÉQUATION À UN USAGE PARTICULIER, DE FIABILITÉ
+CLINIQUE OU AGRONOMIQUE, ET D'ABSENCE DE CONTREFAÇON.
+
+EN PARTICULIER, CE LOGICIEL EST UN PROTOTYPE DE RECHERCHE ET NE CONSTITUE
+PAS UN DISPOSITIF MÉDICAL CERTIFIÉ NI UN OUTIL D'AIDE À LA DÉCISION
+CLINIQUE HOMOLOGUÉ. EN AUCUN CAS L'AUTEUR NE POURRA ÊTRE TENU RESPONSABLE
+DE TOUT DOMMAGE DIRECT, INDIRECT, ACCESSOIRE OU CONSÉCUTIF RÉSULTANT DE
+L'UTILISATION OU DE L'IMPOSSIBILITÉ D'UTILISER CE LOGICIEL.
+
+5. DROIT APPLICABLE
+-------------------
+La présente licence est régie par le droit applicable en République du
+Bénin ainsi que par les conventions internationales relatives au droit
+d'auteur et à la propriété intellectuelle (notamment dans le cadre de
+l'OAPI).
+
+6. CONTACT ET DEMANDES D'AUTORISATION
+-------------------------------------
+Pour toute demande de licence commerciale, de partenariat de recherche, de
+déploiement pilote ou d'autorisation spécifique :
+- Auteur : Cedoque BAGBONON (Projet Matrice-256)
+- Email  : projet.matrice256@protonmail.com
+- Dépôt  : https://github.com/CedBag/matrice-256
