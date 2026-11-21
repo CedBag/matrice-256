@@ -78,7 +78,7 @@ class TestFaNetV30Network:
         return TorchFaNet(n_features=5, hidden_dim=16, n_outputs=1, seed=42)
 
     def test_version_bump(self, fanet_v3):
-        assert fanet_v3.VERSION == "3.0.0"
+        assert fanet_v3.VERSION == "4.1.0"
         
     def test_end_to_end_training_combinatorial(self, fanet_v3):
         """Test rapide d'apprentissage."""

@@ -1,17 +1,26 @@
 # Projet Matrice-256 / bokono
-# Ignorer les environnements virtuels
+# Environnements virtuels
 .venv/
 venv/
 env/
 .env
 
-# Ignorer le cache Python
+# Cache Python et tests
 __pycache__/
 *.py[cod]
 *$py.class
 .pytest_cache/
 
-# SECRET INDUSTRIEL : Fichiers privés et documents originaux de la base Fâ
+# Artefacts de build et distribution
+build/
+dist/
+*.egg-info/
+
+# Resultats locaux de benchmarks (generes sur Kaggle ou en local)
+results_v5/
+results_v5.zip
+
+# Fichiers prives et documents originaux exclus du depot public
 data/knowledge_base/fa_knowledge_private.json
 data/*.pdf
 data/extracted/

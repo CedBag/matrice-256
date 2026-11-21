@@ -77,14 +77,15 @@ class TestFaReLUTorch:
         assert x.grad.shape == x.shape
 
     def test_four_zones_distinct(self):
-        """Les 4 zones produisent des gains différents."""
+        """Les 4 zones continues produisent des pentes distinctes sans saut."""
         act = FaReLU()
         x = torch.tensor([-1.0, 0.03, 0.3, 0.7, 0.95], dtype=torch.float64)
         y = act(x)
-        assert y[0] == 0.0        # zone fermée
-        assert 0 < y[1] < 0.03    # semi-ouvert : gain 0.25
-        assert 0 < y[2] < 0.3     # pré-ouvert : gain 0.5
-        assert y[3] == pytest.approx(0.7, abs=1e-6)  # plein ouvert
+        assert y[0] == 0.0
+        assert y[1] == pytest.approx(0.03 * 0.25, abs=1e-6)
+        assert y[2] == pytest.approx(0.015625 + (0.3 - 0.0625) * 0.5, abs=1e-6)
+        assert y[3] == pytest.approx(0.234375 + (0.7 - 0.5) * 1.0, abs=1e-6)
+        assert y[4] == pytest.approx(0.671875 + (0.95 - 0.9375) * 0.1, abs=1e-6)
 
 
 class TestTorchLearnableFaSigmaTorch:
@@ -236,7 +237,7 @@ class TestTorchFaDecoder:
         preds, dus = layer.forward_with_interpretation(x)
         assert len(dus) == 3
         for du in dus:
-            assert "nom_fon" in du
+            assert "ontological_state" in du
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -245,8 +246,8 @@ class TestTorchFaDecoder:
 
 class TestTorchFaNet:
 
-    def test_version_is_30(self, net):
-        assert net.VERSION == "3.0.0"
+    def test_version_is_41(self, net):
+        assert net.VERSION == "4.1.0"
 
     def test_is_nn_module(self, net):
         assert isinstance(net, nn.Module)
@@ -269,7 +270,7 @@ class TestTorchFaNet:
     def test_summary_runs(self, net, capsys):
         net.summary()
         captured = capsys.readouterr()
-        assert "v3.0.0" in captured.out
+        assert "v4.1.0" in captured.out
         assert "PyTorch" in captured.out
 
     def test_predict_returns_du(self, net, X_np):
@@ -277,7 +278,7 @@ class TestTorchFaNet:
         assert preds.shape == (40, 1)
         assert len(dus) == 40
         for du in dus:
-            assert "nom_fon" in du
+            assert "ontological_state" in du
 
     def test_predict_single_sample(self, net):
         x = np.array([0.3, 0.6, 0.1, 0.8])

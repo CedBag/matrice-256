@@ -1,37 +1,38 @@
-# Copyright (c) 2026 Cedoque BAGBONON — Projet Matrice-256.
+# Copyright (c) 2026 Cedoque BAGBONON, Projet Matrice-256.
 # Tous droits réservés. Reproduction ou distribution interdite sans autorisation.
 
 """
-bokono.ml.torch_layers — Couches FaNet en PyTorch (v0.3)
-=========================================================
-Port natif des 3 couches du réseau de neurones béninois.
+bokono.ml.torch_layers : Couches FaNet en PyTorch (v4.1)
+========================================================
+Architecture PyTorch corrigée :
+  TorchFaEmbedding -> TorchFaHidden -> TorchFaDecoder
 
-Architecture PyTorch :
-  TorchFaEmbedding → TorchFaHidden → TorchFaDecoder
-
-Avantages de v0.3 sur v0.2 :
-  - Autograd complet → zéro backprop manuel, zéro bug de gradient
-  - FaEmbedding DIFFÉRENTIABLE → gradient complet sur toute l'architecture
-  - GPU-ready → .to("cuda") natif, scalabilité industrielle
-  - Composable → nn.Sequential, nn.ModuleList, etc.
+Correctifs scientifiques v4.1 :
+  1. kpoli_table extraite depuis la vraie diagonale Meji (indices 0, 17, 34, ..., 255).
+  2. Support des modes de polarité ("fa", "constant", "permuted") pour l'étude d'ablation.
+  3. Normalisation lisse par sigmoïde (buffers input_mean / input_std) évitant la perte
+     des valeurs négatives sur des données standardisées (StandardScaler).
+  4. Projections de requête par variable (PerFeatureLinear) pour éviter qu'une même
+     projection linéaire traite de manière identique des capteurs hétérogènes.
+  5. Suppression de la modification en place sur embedded[:, :, 0].
+  6. Alignement strict entraînement / inférence dans TorchFaDecoder (classification et régression).
 
 Auteur : Projet Matrice-256 / bokono
 """
 
 from __future__ import annotations
+from typing import Optional
+import numpy as np
 import torch
 import torch.nn as nn
-import numpy as np
-from typing import Optional
 
+from bokono.core.fa_encoder import value_to_algorithmic_state, _get_kb
+from bokono.ml.activations import load_polarity_weights
 from bokono.ml.torch_activations import (
-    FaReLU, TorchLearnableFaSigma, TorchFaDual,
+    TorchFaDual,
     get_torch_activation,
 )
-from bokono.core.fa_encoder import value_to_algorithmic_state, _get_kb
 
-
-# ─── Utilitaires internes ──────────────────────────────────────────────────────
 
 def _fa_weight_tensor(
     shape: tuple[int, int],
@@ -39,11 +40,9 @@ def _fa_weight_tensor(
     seed: int = 42,
 ) -> torch.Tensor:
     """
-    Initialisation des poids depuis la Matrice-256 (version Tensor).
-
-    Même logique que la version NumPy (_fa_weight_init) de v0.2,
-    sauf que le résultat est directement un torch.Tensor.
+    Initialisation des poids depuis la Matrice-256 (version Tensor) ou Xavier.
     """
+    rng = np.random.default_rng(seed)
     if fa_tensor is not None:
         flat = fa_tensor.flatten().astype(np.float32)
         n_needed = shape[0] * shape[1]
@@ -56,133 +55,193 @@ def _fa_weight_tensor(
 
         W = base.reshape(shape)
         W = (W - W.mean()) / (W.std() + 1e-8)
-
-        rng = np.random.default_rng(seed)
-        W += rng.normal(0, 0.01, shape)
+        # Mise à l'échelle type Xavier pour stabilité des gradients en début d'entraînement
+        scale = np.sqrt(2.0 / (shape[0] + shape[1]))
+        W = W * scale + rng.normal(0.0, 0.01, shape)
         return torch.tensor(W, dtype=torch.float32)
 
-    # Fallback : Xavier
     limit = np.sqrt(6.0 / (shape[0] + shape[1]))
-    rng = np.random.default_rng(seed)
     W = rng.uniform(-limit, limit, shape)
     return torch.tensor(W, dtype=torch.float32)
 
 
-# ─── TorchFaEmbedding ─────────────────────────────────────────────────────────
+class PerFeatureLinear(nn.Module):
+    """
+    Projection affine indépendante par variable d'entrée : (batch, n_features, 1) -> (batch, n_features, out_dim).
+
+    Chaque capteur ou biomarqueur apprend ses propres poids de requête vers les 16 Kpoli,
+    tout en exposant .weight et .bias comme nn.Linear.
+    """
+
+    def __init__(self, n_features: int, out_dim: int, seed: int = 42):
+        super().__init__()
+        self.n_features = n_features
+        self.out_dim = out_dim
+        rng = np.random.default_rng(seed)
+        limit = np.sqrt(6.0 / (1 + out_dim))
+        w_init = rng.uniform(-limit, limit, (n_features, out_dim)).astype(np.float32)
+        self.weight = nn.Parameter(torch.tensor(w_init, dtype=torch.float32))
+        self.bias = nn.Parameter(torch.zeros(n_features, out_dim, dtype=torch.float32))
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return x * self.weight.unsqueeze(0) + self.bias.unsqueeze(0)
+
 
 class TorchFaEmbedding(nn.Module):
     """
-    Couche d'embedding Fâ COMBINATOIRE NATIVE — v3.0
+    Couche d'embedding Fâ combinatoire native (16x16 -> 256) v4.1.
 
-    Innovation majeure : L'architecture mime le vrai tirage binaire du Fâ (16x16).
-    Le réseau apprend 2 requêtes (Query Gauche et Query Droit) pour cibler les 
-    16 Kpoli majeurs (Meji), et génère la matrice d'attention sur les 256 signes 
-    par produit tensoriel (Kronecker).
-    
-    Plus de "Soft-Lookup" plat, mais un raisonnement généalogique croisé.
+    Génère deux distributions d'attention sur les 16 Kpoli (gauche et droite)
+    et forme la distribution conjointe sur les 256 Du par produit de Kronecker.
     """
 
     FA_EMBED_DIM: int = 4
 
-    def __init__(self, n_features: int, x_min: float = 0.0, x_max: float = 1.0):
+    def __init__(
+        self,
+        n_features: int,
+        x_min: float = 0.0,
+        x_max: float = 1.0,
+        polarity_mode: str = "fa",
+        seed: int = 42,
+        per_feature_queries: bool = True,
+        auto_normalize: bool = True,
+    ):
         super().__init__()
         self.n_features = n_features
         self.output_dim = n_features * self.FA_EMBED_DIM
-        self.x_min = x_min
-        self.x_max = x_max
+        self.x_min = float(x_min)
+        self.x_max = float(x_max)
+        self.polarity_mode = polarity_mode
+        self.seed = seed
+        self.per_feature_queries = per_feature_queries
+        self.auto_normalize = auto_normalize
 
-        # Projections de requête (Query) : 2 têtes (Kpoli Gauche, Kpoli Droit)
-        self.query_gauche = nn.Linear(1, self.FA_EMBED_DIM, dtype=torch.float32)
-        self.query_droit = nn.Linear(1, self.FA_EMBED_DIM, dtype=torch.float32)
+        if per_feature_queries:
+            self.query_gauche: nn.Module = PerFeatureLinear(n_features, self.FA_EMBED_DIM, seed=seed)
+            self.query_droit: nn.Module = PerFeatureLinear(n_features, self.FA_EMBED_DIM, seed=seed + 1000)
+        else:
+            self.query_gauche = nn.Linear(1, self.FA_EMBED_DIM, dtype=torch.float32)
+            self.query_droit = nn.Linear(1, self.FA_EMBED_DIM, dtype=torch.float32)
 
-        # Tables Fâ
-        kpoli_table, ref_table = self._build_reference_tables()
-        self.register_buffer("kpoli_table", kpoli_table)  # (16, 4) - Keys
-        self.register_buffer("ref_table", ref_table)      # (256, 4) - Values
+        # Buffers de normalisation lisse (ajustés sur X_train uniquement dans fit())
+        default_center = 0.5 * (self.x_min + self.x_max)
+        default_scale = max((self.x_max - self.x_min) / 4.0, 1e-6)
+        self.register_buffer("input_mean", torch.full((n_features,), default_center, dtype=torch.float32))
+        self.register_buffer("input_std", torch.full((n_features,), default_scale, dtype=torch.float32))
+        self.register_buffer("norm_fitted", torch.tensor(False, dtype=torch.bool))
 
-    def _build_reference_tables(self) -> tuple[torch.Tensor, torch.Tensor]:
+        kpoli_table, ref_table, kpoli_polarities = self._build_reference_tables()
+        self.register_buffer("kpoli_table", kpoli_table)            # (16, 4) Keys
+        self.register_buffer("ref_table", ref_table)                # (256, 4) Values
+        self.register_buffer("kpoli_polarities", kpoli_polarities)  # (16,) Polarités Kpoli
+
+    def set_normalization(self, X: np.ndarray) -> None:
+        """
+        Ajuste la moyenne et l'écart-type par variable strictement sur les données
+        d'entraînement (zéro fuite de données).
+        """
+        X_arr = np.asarray(X, dtype=np.float32)
+        if X_arr.ndim == 2 and X_arr.shape[1] != self.n_features:
+            X_arr = X_arr.reshape(-1, self.n_features)
+        mean = X_arr.mean(axis=0)
+        std = X_arr.std(axis=0)
+        std = np.where(std < 1e-6, 1.0, std)
+        device = getattr(self, "input_mean").device
+        self.input_mean.copy_(torch.tensor(mean, dtype=torch.float32, device=device))
+        self.input_std.copy_(torch.tensor(std, dtype=torch.float32, device=device))
+        self.norm_fitted.fill_(True)
+
+    def _build_reference_tables(self) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         kb = _get_kb()
-        pol_map = {"favorable": 1.0, "neutre": 0.5,
-                   "défavorable": 0.0, "non_défini": 0.5}
+        k_pols = load_polarity_weights(polarity_mode=self.polarity_mode, seed=self.seed)
 
-        # Value table (256, 4)
+        # Table des 256 Du : (256, 4) = [val_norm, polarite_num, intensite, est_meji]
         table = torch.zeros(256, 4, dtype=torch.float32)
-        # Key table (16, 4) pour les 16 Kpoli
-        kpoli_table = torch.zeros(16, 4, dtype=torch.float32)
-        
-        for i, du in enumerate(kb):
-            table[i, 0] = i / 255.0  # val_norm
-            table[i, 1] = pol_map.get(du.get("polarite", "non_défini"), 0.5)
-            table[i, 2] = float(du.get("intensite", 0.5))
-            table[i, 3] = 1.0 if du.get("est_meji", False) else 0.0
-            
-            # Les 16 premiers éléments sont les Meji fondamentaux
-            if i < 16:
-                kpoli_table[i] = table[i]
+        for i in range(16):
+            for j in range(16):
+                du_id = i * 16 + j
+                du = kb[du_id]
+                val_norm = du_id / 255.0
+                # Cohérence algébrique exacte : pol(i, j) = (pol(i) + pol(j)) / 2
+                pol_val = float(0.5 * (k_pols[i] + k_pols[j]))
+                intensite = float(du.get("intensite", 0.5))
+                est_meji = 1.0 if (i == j) else 0.0
 
-        return kpoli_table, table
+                table[du_id, 0] = val_norm
+                table[du_id, 1] = pol_val
+                table[du_id, 2] = intensite
+                table[du_id, 3] = est_meji
 
-    def forward(self, x: torch.Tensor, return_attention: bool = False, return_dual: bool = False) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor] | tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-        """
-        Architecture Combinatoire Fâ (16x16).
-        """
+        # Vraie diagonale des 16 Meji : indices 0, 17, 34, ..., 255
+        meji_indices = torch.tensor([k * 16 + k for k in range(16)], dtype=torch.long)
+        kpoli_table = table[meji_indices].clone()
+        kpoli_polarities = torch.tensor(k_pols, dtype=torch.float32)
+
+        return kpoli_table, table, kpoli_polarities
+
+    def forward(
+        self,
+        x: torch.Tensor,
+        return_attention: bool = False,
+        return_dual: bool = False,
+    ) -> (
+        torch.Tensor
+        | tuple[torch.Tensor, torch.Tensor]
+        | tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]
+    ):
         x = x.to(dtype=torch.float32)
         batch_size = x.shape[0]
 
-        x_range = self.x_max - self.x_min
-        x_norm = torch.clamp((x - self.x_min) / (x_range + 1e-10), 0.0, 1.0)
+        if self.auto_normalize:
+            mean = getattr(self, "input_mean").to(dtype=x.dtype, device=x.device)
+            std = getattr(self, "input_std").to(dtype=x.dtype, device=x.device)
+            x_norm = torch.sigmoid((x - mean) / std)
+        else:
+            x_range = self.x_max - self.x_min
+            x_norm = torch.clamp((x - self.x_min) / (x_range + 1e-10), 0.0, 1.0)
 
         x_in = x_norm.unsqueeze(-1)  # (batch, n_features, 1)
 
-        # 1. Génération des Queries Binaires (Gauche et Droit)
+        # 1. Requêtes Kpoli gauche et droit
         Q_gauche = self.query_gauche(x_in)  # (b, n, 4)
         Q_droit = self.query_droit(x_in)    # (b, n, 4)
 
-        # 2. Récupérer K_16 (Les 16 Meji générateurs) et V (Les 256 valeurs)
-        K_16: torch.Tensor = self.kpoli_table  # type: ignore[assignment]
-        V: torch.Tensor = self.ref_table       # type: ignore[assignment]
+        # 2. Clés K_16 (16 Meji sur la diagonale) et Valeurs V (256 Du)
+        K_16: torch.Tensor = getattr(self, "kpoli_table").to(dtype=x.dtype, device=x.device)
+        V: torch.Tensor = getattr(self, "ref_table").to(dtype=x.dtype, device=x.device)
 
-        # 3. Attention Gauche (sur 16) et Droite (sur 16)
-        scores_gauche = torch.matmul(Q_gauche, K_16.transpose(0, 1)) / (self.FA_EMBED_DIM ** 0.5)
-        scores_droit  = torch.matmul(Q_droit,  K_16.transpose(0, 1)) / (self.FA_EMBED_DIM ** 0.5)
+        # 3. Attention croisée sur les 16 Kpoli
+        scale = float(self.FA_EMBED_DIM) ** 0.5
+        scores_gauche = torch.matmul(Q_gauche, K_16.transpose(0, 1)) / scale
+        scores_droit = torch.matmul(Q_droit, K_16.transpose(0, 1)) / scale
 
         attn_gauche = torch.softmax(scores_gauche, dim=-1)  # (b, n, 16)
-        attn_droit  = torch.softmax(scores_droit, dim=-1)   # (b, n, 16)
+        attn_droit = torch.softmax(scores_droit, dim=-1)    # (b, n, 16)
 
-        # 4. Magie Combinatoire (Kronecker Product temporel)
-        # attn_gauche.unsqueeze(-1) => (b, n, 16, 1)
-        # attn_droit.unsqueeze(-2)  => (b, n, 1, 16)
-        # Multiplication => (b, n, 16, 16)
+        # 4. Produit de Kronecker (16x16 -> 256)
         attn_matrix = attn_gauche.unsqueeze(-1) * attn_droit.unsqueeze(-2)
-        
-        # Le Fâ suit exactement ID = gauche_idx * 16 + droit_idx
-        # Un flattened (.view) produit nativement l'alignement sur 256.
-        attn_weights = attn_matrix.view(batch_size, self.n_features, 256)
+        attn_weights = attn_matrix.reshape(batch_size, self.n_features, 256)
 
-        # 5. Calcul de l'embedding final
-        embedded = torch.matmul(attn_weights, V)  # (b, n, 4)
-        embedded[:, :, 0] = x_norm
+        # 5. Agrégation symbolique + conservation sans écriture in-place
+        embedded_raw = torch.matmul(attn_weights, V)  # (b, n, 4)
+        embedded = torch.cat([x_norm.unsqueeze(-1), embedded_raw[:, :, 1:]], dim=-1)
 
         out = embedded.reshape(batch_size, -1)
-        
+
         if return_dual:
-            return out, attn_weights, attn_gauche, attn_droit 
+            return out, attn_weights, attn_gauche, attn_droit
         if return_attention:
             return out, attn_weights
-            
         return out
 
 
-# ─── TorchFaHidden ─────────────────────────────────────────────────────────────
-
 class TorchFaHidden(nn.Module):
     """
-    Couche cachée du FaNet — version PyTorch.
+    Couche cachée de FaNet (v4.1).
 
     y = Activation(x @ W.T + b)
-
-    W initialisé depuis la Matrice-256. Activation = FaReLU ou LearnableFaSigma.
-    Tout le backprop est géré par autograd — zéro calcul manuel.
+    Supporte l'initialisation Matrice-256 (init_mode="fa") ou Xavier (init_mode="xavier").
     """
 
     def __init__(
@@ -192,32 +251,38 @@ class TorchFaHidden(nn.Module):
         activation: str = "fa_sigma",
         seed: int = 42,
         fa_tensor: Optional[np.ndarray] = None,
+        polarity_mode: str = "fa",
     ):
         super().__init__()
         self.input_dim = input_dim
         self.hidden_dim = hidden_dim
 
-        # Poids initialisés depuis la Matrice-256
         W = _fa_weight_tensor((hidden_dim, input_dim), fa_tensor, seed)
         self.weight = nn.Parameter(W)
         self.bias = nn.Parameter(torch.zeros(hidden_dim, dtype=torch.float32))
 
-        # Activation Fâ (nn.Module → autograd natif)
-        self.activation = get_torch_activation(activation)
+        self.activation = get_torch_activation(
+            activation,
+            polarity_mode=polarity_mode,
+            seed=seed,
+        )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         z = torch.nn.functional.linear(x.to(torch.float32), self.weight, self.bias)
         return self.activation(z)
 
 
-# ─── TorchFaDecoder ────────────────────────────────────────────────────────────
-
 class TorchFaDecoder(nn.Module):
     """
-    Couche de sortie FaNet — prédiction + interprétation Fâ.
+    Couche de sortie de FaNet (v4.1) avec cohérence stricte entraînement / inférence.
 
-    Activation FaDual (Meji) → sortie dans ]0, 1[.
-    forward_with_interpretation() retourne la prédiction + le du correspondant.
+    Modes :
+      - task="classification", output_mode="standard" : forward() applique torch.sigmoid(z),
+        exactement cohérent avec BCEWithLogitsLoss sur forward_logits().
+      - task="classification", output_mode="fa_dual"  : forward() applique TorchFaDual(z),
+        entraîné directement avec BCELoss (ablation).
+      - task="regression"                             : forward() retourne la projection
+        linéaire non bornée z (pas de saturation artificielle sur [0.047, 0.953]).
     """
 
     def __init__(
@@ -225,8 +290,13 @@ class TorchFaDecoder(nn.Module):
         hidden_dim: int,
         n_outputs: int = 1,
         seed: int = 42,
+        task: str = "classification",
+        output_mode: str = "standard",
+        polarity_mode: str = "fa",
     ):
         super().__init__()
+        self.task = task
+        self.output_mode = output_mode
 
         limit = np.sqrt(6.0 / (n_outputs + hidden_dim))
         rng = np.random.default_rng(seed)
@@ -234,28 +304,37 @@ class TorchFaDecoder(nn.Module):
 
         self.weight = nn.Parameter(torch.tensor(W, dtype=torch.float32))
         self.bias = nn.Parameter(torch.zeros(n_outputs, dtype=torch.float32))
-        self.activation = TorchFaDual()
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        z = torch.nn.functional.linear(x.to(torch.float32), self.weight, self.bias)
-        return self.activation(z)
+        self.activation: Optional[nn.Module] = (
+            TorchFaDual(polarity_mode=polarity_mode, seed=seed)
+            if (task == "classification" and output_mode == "fa_dual")
+            else None
+        )
 
     def forward_logits(self, x: torch.Tensor) -> torch.Tensor:
-        """Retourne les logits bruts AVANT activation (TorchFaDual/Sigmoid).
-        Usage exclusif : boucle d'entrainement avec BCEWithLogitsLoss.
-        BCEWithLogitsLoss applique sigmoid en interne (log-sum-exp trick)
-        pour une stabilite numerique maximale."""
+        """Retourne les logits bruts avant activation."""
         return torch.nn.functional.linear(x.to(torch.float32), self.weight, self.bias)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        z = self.forward_logits(x)
+        if self.task == "regression":
+            return z
+        if self.output_mode == "fa_dual" and self.activation is not None:
+            return self.activation(z)
+        return torch.sigmoid(z)
 
     @torch.no_grad()
     def forward_with_interpretation(
         self, x: torch.Tensor
     ) -> tuple[torch.Tensor, list[dict]]:
-        """Prédiction + interprétation Fâ pour chaque élément du batch."""
+        """Prédiction numérique + état symbolique Fâ pour chaque élément du batch."""
         preds = self.forward(x)
         interpretations = []
         for b in range(preds.shape[0]):
-            val = float(preds[b, 0]) if preds.ndim > 1 else float(preds[b])
-            du = value_to_algorithmic_state(val)
+            raw_val = float(preds[b, 0]) if preds.ndim > 1 else float(preds[b])
+            if self.task == "regression":
+                mapped_val = float(1.0 / (1.0 + np.exp(-np.clip(raw_val, -20.0, 20.0))))
+            else:
+                mapped_val = raw_val
+            du = value_to_algorithmic_state(mapped_val)
             interpretations.append(du)
         return preds, interpretations

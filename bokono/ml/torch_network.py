@@ -1,34 +1,36 @@
-# Copyright (c) 2026 Cedoque BAGBONON — Projet Matrice-256.
+# Copyright (c) 2026 Cedoque BAGBONON, Projet Matrice-256.
 # Tous droits réservés. Reproduction ou distribution interdite sans autorisation.
 
 """
-bokono.ml.torch_network — FaNet v4.0 (PyTorch)
-================================================
-Le premier réseau de neurones béninois, avec Architecture Combinatoire Native.
+bokono.ml.torch_network : FaNet v4.1 (PyTorch)
+==============================================
+Réseau neuro-symbolique fondé sur la combinatoire binaire du Fâ (16x16 -> 256).
 
-Capacités v4.0 :
-  1. Autograd    — gradients exacts via autograd PyTorch
-  2. GPU-ready   — .to("cuda") natif + AMP FP16
-  3. Embedding   — Combinatoire binaire native (16x16 -> 256)
-  4. LSTM Natif  — Mode temporel pour séries IoT (seq_len > 0)
-  5. Compilation — torch.compile() pour accélération 3-10× en inférence
-  6. Optimiseurs — Adam, AdamW, SGD momentum
-  7. Sauvegarde  — state_dict natif PyTorch
-
-L'interface utilisateur reste simple :
-  net = TorchFaNet(n_features=4, hidden_dim=32)
-  history = net.fit(X, y, epochs=100)
-  pred, du = net.predict(X_test)
+Correctifs v4.1 :
+  - Cohérence stricte entraînement / inférence (classification et régression).
+  - Support GPU CUDA complet (loss_fn et buffers alignés sur device).
+  - Normalisation lisse auto-ajustée sur X_train uniquement (zéro perte des valeurs négatives).
+  - Contrôles d'ablation natifs : polarity_mode ("fa", "constant", "permuted"),
+    init_mode ("fa", "xavier"), output_mode ("standard", "fa_dual"),
+    per_feature_queries (True/False).
+  - Early stopping optionnel avec restauration des meilleurs poids sur validation.
+  - Correction de summary() et export_onnx() en mode LSTM (seq_len > 0).
 
 Auteur : Projet Matrice-256 / bokono
 """
 
 from __future__ import annotations
+import copy
 import logging
+import os
+from typing import Optional
+import numpy as np
 import torch
 import torch.nn as nn
-import numpy as np
-from typing import Optional
+
+from bokono.core.fa_matrix import FaMatrix
+from bokono.ml.torch_layers import TorchFaEmbedding, TorchFaHidden, TorchFaDecoder
+from bokono.ml.torch_loss import FaImbalanceLoss
 
 logger = logging.getLogger("bokono.ml.torch_network")
 
@@ -38,40 +40,36 @@ def _validate_input(
     y: np.ndarray | None = None,
     expected_features: int | None = None,
 ) -> None:
-    """Validation centralisée des entrées — empêche les corruptions silencieuses."""
+    """Validation centralisée des entrées."""
     if not isinstance(X, np.ndarray):
         raise TypeError(f"X doit être un np.ndarray, reçu {type(X).__name__}")
     if X.ndim not in (1, 2):
         raise ValueError(f"X doit être 1D ou 2D, reçu {X.ndim}D (shape={X.shape})")
     if not np.all(np.isfinite(X)):
-        raise ValueError("X contient des NaN ou Inf — données corrompues.")
+        raise ValueError("X contient des NaN ou Inf (données corrompues).")
     if expected_features is not None and X.ndim == 2 and X.shape[1] != expected_features:
         raise ValueError(
-            f"X.shape[1]={X.shape[1]} != n_features={expected_features}"
+            f"X.shape[1]={X.shape[1]} != attendu={expected_features}"
         )
     if y is not None:
         if not isinstance(y, np.ndarray):
             raise TypeError(f"y doit être un np.ndarray, reçu {type(y).__name__}")
         if not np.all(np.isfinite(y)):
-            raise ValueError("y contient des NaN ou Inf — cibles corrompues.")
-
-from bokono.ml.torch_layers import TorchFaEmbedding, TorchFaHidden, TorchFaDecoder
-from bokono.core.fa_matrix import FaMatrix
+            raise ValueError("y contient des NaN ou Inf (cibles corrompues).")
 
 
 class TorchFaNet(nn.Module):
     """
-    FaNet v0.3 — Réseau de neurones béninois en PyTorch.
+    FaNet v4.1 : réseau de neurones neuro-symbolique en PyTorch.
 
-    Architecture :
-      Input(n_features) → Embedding(n_features×4) → Hidden(hidden_dim) → Output(n_outputs)
+    Architecture tabulaire (seq_len=0) :
+      Input(n_features) -> TorchFaEmbedding(n_features * 4) -> TorchFaHidden(hidden_dim) -> TorchFaDecoder(n_outputs)
 
-    Poids initialisés depuis la Matrice-256.
-    Poids de polarité Kpoli entraînables (LearnableFaSigma).
-    Embedding Fâ différentiable (Combinatoire Native 16x16).
+    Architecture temporelle (seq_len>0) :
+      Input(seq_len * n_features) -> TorchFaEmbedding par instant T -> LSTM -> TorchFaDecoder(n_outputs)
     """
 
-    VERSION = "4.0.0"
+    VERSION = "4.1.0"
 
     def __init__(
         self,
@@ -86,32 +84,50 @@ class TorchFaNet(nn.Module):
         bidirectional: bool = False,
         num_layers: int = 1,
         dropout: float = 0.0,
+        task: str = "classification",
+        output_mode: str = "standard",
+        polarity_mode: str = "fa",
+        init_mode: str = "fa",
+        per_feature_queries: bool = True,
+        auto_normalize: bool = True,
     ):
         super().__init__()
         self.n_features = n_features
         self.hidden_dim = hidden_dim
         self.n_outputs = n_outputs
         self.activation_name = activation
-        self.x_min = x_min
-        self.x_max = x_max
-        self.seed = seed
-        self.seq_len = seq_len  # 0 = mode Tabulaire (retro-compat), >0 = mode LSTM Temporel
-        self.bidirectional = bidirectional
-        self.num_layers = num_layers
-        self.dropout_val = dropout
+        self.x_min = float(x_min)
+        self.x_max = float(x_max)
+        self.seed = int(seed)
+        self.seq_len = int(seq_len)
+        self.bidirectional = bool(bidirectional)
+        self.num_layers = int(num_layers)
+        self.dropout_val = float(dropout)
+        self.task = task
+        self.output_mode = output_mode
+        self.polarity_mode = polarity_mode
+        self.init_mode = init_mode
+        self.per_feature_queries = bool(per_feature_queries)
+        self.auto_normalize = bool(auto_normalize)
 
-        # Tenseur Matrice-256 pour l'initialisation
-        fa_tensor = FaMatrix().to_weight_tensor()
+        # Graine déterministe pour l'initialisation PyTorch (LSTM / Linear)
+        torch.manual_seed(self.seed)
 
+        fa_tensor = FaMatrix().to_weight_tensor() if init_mode == "fa" else None
         embedding_dim = n_features * TorchFaEmbedding.FA_EMBED_DIM
 
-        self.embedding = TorchFaEmbedding(n_features, x_min, x_max)
+        self.embedding = TorchFaEmbedding(
+            n_features=n_features,
+            x_min=x_min,
+            x_max=x_max,
+            polarity_mode=polarity_mode,
+            seed=seed,
+            per_feature_queries=per_feature_queries,
+            auto_normalize=auto_normalize,
+        )
 
-        if seq_len > 0:
-            # Mode LSTM : L'Embedding Fa extrait les Kpolis par instant T,
-            # puis le LSTM lit la dynamique temporelle de la sequence.
-            # TorchFaHidden (Dense) est bypasse pour ne pas confondre espace et temps.
-            self.lstm_layer = nn.LSTM(
+        if self.seq_len > 0:
+            self.lstm_layer: Optional[nn.LSTM] = nn.LSTM(
                 input_size=embedding_dim,
                 hidden_size=hidden_dim,
                 num_layers=num_layers,
@@ -119,116 +135,118 @@ class TorchFaNet(nn.Module):
                 dropout=dropout if num_layers > 1 else 0.0,
                 bidirectional=bidirectional,
             )
-            self.hidden = None  # Non utilise en mode LSTM
+            self.hidden: Optional[TorchFaHidden] = None
         else:
-            # Mode Tabulaire (Classification / Regression instantanee)
-            self.hidden = TorchFaHidden(embedding_dim, hidden_dim, activation, seed, fa_tensor)
-            self.lstm_layer = None  # Non utilise en mode Dense
+            self.hidden = TorchFaHidden(
+                input_dim=embedding_dim,
+                hidden_dim=hidden_dim,
+                activation=activation,
+                seed=seed,
+                fa_tensor=fa_tensor,
+                polarity_mode=polarity_mode,
+            )
+            self.lstm_layer = None
 
-        # Dimension d'entrée du décodeur : doublée si LSTM bidirectionnel
-        decoder_input_dim = hidden_dim * 2 if (seq_len > 0 and bidirectional) else hidden_dim
+        decoder_input_dim = hidden_dim * 2 if (self.seq_len > 0 and bidirectional) else hidden_dim
+        self.dropout_layer: Optional[nn.Dropout] = nn.Dropout(p=dropout) if dropout > 0.0 else None
 
-        if dropout > 0.0:
-            self.dropout_layer = nn.Dropout(p=dropout)
-        else:
-            self.dropout_layer = None
-
-        self.decoder = TorchFaDecoder(decoder_input_dim, n_outputs, seed)
+        self.decoder = TorchFaDecoder(
+            hidden_dim=decoder_input_dim,
+            n_outputs=n_outputs,
+            seed=seed,
+            task=task,
+            output_mode=output_mode,
+            polarity_mode=polarity_mode,
+        )
         self._compiled = False
 
-    def compile_model(self, mode: str = "reduce-overhead"):
-        """Compile le forward pass via torch.compile() (PyTorch 2.0+).
-        Accélère l'inférence de 3× à 10× après le premier appel (warmup JIT).
-        
-        Args:
-            mode: 'default', 'reduce-overhead' (recommandé), ou 'max-autotune'
-        """
+    def compile_model(self, mode: str = "reduce-overhead") -> "TorchFaNet":
+        """Compile le forward pass via torch.compile() (PyTorch 2.0+)."""
         if self._compiled:
             return self
         try:
-            torch_version = tuple(int(x) for x in torch.__version__.split('.')[:2])
+            torch_version = tuple(int(x) for x in torch.__version__.split(".")[:2])
             if torch_version >= (2, 0):
-                self.forward = torch.compile(self.forward, mode=mode)
+                self.forward = torch.compile(self.forward, mode=mode)  # type: ignore[method-assign]
                 self._compiled = True
-                logging.info(f"FaNet compilé avec torch.compile(mode='{mode}')")
+                logger.info(f"FaNet compilé avec torch.compile(mode='{mode}')")
             else:
-                logging.warning(f"torch.compile() requiert PyTorch >= 2.0 (actuel: {torch.__version__})")
+                logger.warning(f"torch.compile() requiert PyTorch >= 2.0 (actuel: {torch.__version__})")
         except Exception as e:
-            logging.warning(f"torch.compile() non disponible: {e}. Mode eager conservé.")
+            logger.warning(f"torch.compile() non disponible: {e}. Mode eager conservé.")
         return self
 
     def _embed_temporal(self, x: torch.Tensor):
         """
         Mode LSTM : x est un vecteur aplati (batch, seq_len * n_features).
-        On restructure, on passe chaque pas de temps dans le FaEmbedding,
-        puis dans le LSTM pour extraire la memoire dynamique de la sequence.
         Retourne (last_hidden, attn_g_mean, attn_d_mean).
         """
+        assert self.lstm_layer is not None
         B = x.shape[0]
-        # 1. Restructurer : (batch, seq_len, n_features)
-        x_seq = x.view(B, self.seq_len, self.n_features)
-        # 2. Aplatir temporellement : (batch*seq_len, n_features)
+        x_seq = x.reshape(B, self.seq_len, self.n_features)
         x_flat = x_seq.reshape(B * self.seq_len, self.n_features)
-        # 3. FaEmbedding sur chaque instant T (extraction Kpolis parallele)
-        emb_flat, attn_flat, attn_g_flat, attn_d_flat = self.embedding(x_flat, return_dual=True)
+
+        emb_flat, _, attn_g_flat, attn_d_flat = self.embedding(x_flat, return_dual=True)
         embed_dim = emb_flat.shape[-1]
-        # 4. Restructurer en sequence pour LSTM : (batch, seq_len, embed_dim)
-        emb_seq = emb_flat.view(B, self.seq_len, embed_dim)
-        # 5. LSTM : sortie (batch, seq_len, hidden_dim * num_directions), dernier etat cache (num_layers * num_directions, batch, hidden_dim)
+        emb_seq = emb_flat.reshape(B, self.seq_len, embed_dim)
+
         _, (h_n, _) = self.lstm_layer(emb_seq)
-        
         if self.bidirectional:
-            # Concaténer le dernier état caché forward (h_n[-2]) et backward (h_n[-1]) de la dernière couche LSTM
-            h_forward = h_n[-2]
-            h_backward = h_n[-1]
-            last_hidden = torch.cat((h_forward, h_backward), dim=-1)  # (batch, hidden_dim * 2)
+            last_hidden = torch.cat((h_n[-2], h_n[-1]), dim=-1)
         else:
-            last_hidden = h_n[-1]  # (batch, hidden_dim)
+            last_hidden = h_n[-1]
 
         if self.dropout_layer is not None:
             last_hidden = self.dropout_layer(last_hidden)
-            
-        # 6. Attention ontologique moyenne sur la fenetre temporelle (pour FaImbalanceLoss)
-        attn_g_mean = attn_g_flat.view(B, self.seq_len, self.n_features, -1).mean(dim=1)  # (batch, n_features, 16)
-        attn_d_mean = attn_d_flat.view(B, self.seq_len, self.n_features, -1).mean(dim=1)
+
+        attn_g_mean = attn_g_flat.reshape(B, self.seq_len, self.n_features, -1).mean(dim=1)
+        attn_d_mean = attn_d_flat.reshape(B, self.seq_len, self.n_features, -1).mean(dim=1)
         return last_hidden, attn_g_mean, attn_d_mean
 
+    def _encode_tabular(self, x: torch.Tensor, return_attention: bool = False, return_dual: bool = False):
+        assert self.hidden is not None
+        if return_dual:
+            emb, attn, attn_g, attn_d = self.embedding(x, return_dual=True)
+            h = self.hidden(emb)
+            if self.dropout_layer is not None:
+                h = self.dropout_layer(h)
+            return h, attn, attn_g, attn_d
+        if return_attention:
+            emb, attn = self.embedding(x, return_attention=True)
+            h = self.hidden(emb)
+            if self.dropout_layer is not None:
+                h = self.dropout_layer(h)
+            return h, attn
+        emb = self.embedding(x)
+        h = self.hidden(emb)
+        if self.dropout_layer is not None:
+            h = self.dropout_layer(h)
+        return h
+
     def forward(self, x: torch.Tensor, return_attention: bool = False, return_dual: bool = False):
-        """Passe avant : x -> prediction dans ]0, 1[.
-        Mode Tabulaire (seq_len=0) : Dense classique.
-        Mode LSTM (seq_len>0)      : Sequence temporelle via LSTM.
-        """
+        """Passe avant cohérente avec la tâche (classification ou régression)."""
         if self.seq_len > 0:
             last_h, attn_g, attn_d = self._embed_temporal(x)
             out = self.decoder(last_h)
             if return_dual:
                 return out, attn_g, attn_d
+            if return_attention:
+                attn_matrix = attn_g.unsqueeze(-1) * attn_d.unsqueeze(-2)
+                attn_weights = attn_matrix.reshape(x.shape[0], self.n_features, 256)
+                return out, attn_weights
             return out
 
-        # Mode Tabulaire
         if return_dual:
-            emb, attn, attn_gauche, attn_droit = self.embedding(x, return_dual=True)
-            h = self.hidden(emb)
-            if self.dropout_layer is not None:
-                h = self.dropout_layer(h)
-            return self.decoder(h), attn_gauche, attn_droit
-        elif return_attention:
-            emb, attn = self.embedding(x, return_attention=True)
-            h = self.hidden(emb)
-            if self.dropout_layer is not None:
-                h = self.dropout_layer(h)
+            h, _, attn_g, attn_d = self._encode_tabular(x, return_dual=True)
+            return self.decoder(h), attn_g, attn_d
+        if return_attention:
+            h, attn = self._encode_tabular(x, return_attention=True)
             return self.decoder(h), attn
-        else:
-            emb = self.embedding(x)
-            h = self.hidden(emb)
-            if self.dropout_layer is not None:
-                h = self.dropout_layer(h)
-            return self.decoder(h)
+        h = self._encode_tabular(x)
+        return self.decoder(h)
 
     def forward_logits(self, x: torch.Tensor, return_dual: bool = False):
-        """Logits bruts (avant sigmoid) pour BCEWithLogitsLoss.
-        Mode LSTM ou Tabulaire detecte automatiquement via self.seq_len.
-        """
+        """Logits bruts avant activation de sortie (pour BCEWithLogitsLoss)."""
         if self.seq_len > 0:
             last_h, attn_g, attn_d = self._embed_temporal(x)
             out = self.decoder.forward_logits(last_h)
@@ -236,21 +254,11 @@ class TorchFaNet(nn.Module):
                 return out, attn_g, attn_d
             return out
 
-        # Mode Tabulaire
         if return_dual:
-            emb, attn, attn_gauche, attn_droit = self.embedding(x, return_dual=True)
-            h = self.hidden(emb)
-            if self.dropout_layer is not None:
-                h = self.dropout_layer(h)
-            return self.decoder.forward_logits(h), attn_gauche, attn_droit
-        else:
-            emb = self.embedding(x)
-            h = self.hidden(emb)
-            if self.dropout_layer is not None:
-                h = self.dropout_layer(h)
-            return self.decoder.forward_logits(h)
-
-    # ─── Entraînement ─────────────────────────────────────────────────────────
+            h, _, attn_g, attn_d = self._encode_tabular(x, return_dual=True)
+            return self.decoder.forward_logits(h), attn_g, attn_d
+        h = self._encode_tabular(x)
+        return self.decoder.forward_logits(h)
 
     def fit(
         self,
@@ -266,83 +274,81 @@ class TorchFaNet(nn.Module):
         verbose_every: int = 10,
         lambda_fa: float = 0.1,
         pos_weight: float = 1.0,
-        task: str = "classification",
+        task: Optional[str] = None,
         compile: bool = False,
+        weight_decay: float = 0.0,
+        early_stopping_patience: int = 0,
+        use_amp: bool = False,
     ) -> dict[str, list[float]]:
         """
-        Entrainement supervise.
-
-        Utilise l'optimiseur PyTorch (Adam par defaut) au lieu du SGD manuel.
-
-        Args:
-            X:            Donnees (n_samples, n_features) - NumPy
-            y:            Cibles (n_samples,) - NumPy
-            epochs:       Nombre d'epoques
-            lr:           Learning rate
-            batch_size:   Taille des mini-batches
-            optimizer:    'adam', 'adamw', ou 'sgd'
-            X_val:        Donnees de validation (optionnel)
-            y_val:        Cibles de validation (optionnel)
-            verbose:      Afficher la progression
-            verbose_every: Afficher tous les N epochs
-            lambda_fa:    Force de la penalite ontologique Fa (0 = desactivee)
-            pos_weight:   Poids de la classe positive pour BCEWithLogitsLoss.
-                          Valeur recommandee : n_negatifs / n_positifs.
-                          Ex : 4.5%% positifs => pos_weight = 95.5/4.5 = 21.0
-                          Defaut : 1.0 (classes equilibrees, comportement classique)
-
-        Returns:
-            {"loss": [...], "val_loss": [...]}
+        Entraînement supervisé avec alignement strict train/inférence et support GPU CUDA.
         """
-        # En mode LSTM, X est aplati : (batch, seq_len * n_features)
-        # => la validation doit porter sur seq_len * n_features, pas n_features seul.
+        active_task = task if task is not None else self.task
+        self.task = active_task
+        self.decoder.task = active_task
+
         expected_w = self.seq_len * self.n_features if self.seq_len > 0 else self.n_features
         _validate_input(X, y, expected_w)
         if X_val is not None and y_val is not None:
             _validate_input(X_val, y_val, expected_w)
 
-        device = next(self.parameters()).device
-        is_cuda = (device.type == "cuda")
+        # Ajustement de la normalisation interne sur X_train uniquement (zéro fuite)
+        if self.auto_normalize:
+            self.embedding.set_normalization(X)
 
-        # 1. DataLoader (Big Data OOM Protection)
+        device = next(self.parameters()).device
+        is_cuda = (device.type == "cuda") and bool(use_amp)
+
         from torch.utils.data import TensorDataset, DataLoader
-        
-        # Les données restent en CPU RAM au début, on force float32
+
         X_t = torch.tensor(np.asarray(X, dtype=np.float32))
         y_t = torch.tensor(np.asarray(y, dtype=np.float32))
         if y_t.ndim == 1:
             y_t = y_t.unsqueeze(1)
-            
+
         dataset = TensorDataset(X_t, y_t)
-        # DataLoader streamera les batchs en VRAM un par un
-        # generator permet reproductibilité du shuffle
         rng = torch.Generator()
         rng.manual_seed(self.seed)
-        loader = DataLoader(
-            dataset, batch_size=batch_size, shuffle=True, generator=rng
-        )
+        loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, generator=rng)
 
-        # Optimiseur PyTorch
         opt_map = {
-            "adam": lambda: torch.optim.Adam(self.parameters(), lr=lr),
-            "adamw": lambda: torch.optim.AdamW(self.parameters(), lr=lr),
-            "sgd": lambda: torch.optim.SGD(self.parameters(), lr=lr),
+            "adam": lambda: torch.optim.Adam(self.parameters(), lr=lr, weight_decay=weight_decay),
+            "adamw": lambda: torch.optim.AdamW(self.parameters(), lr=lr, weight_decay=weight_decay),
+            "sgd": lambda: torch.optim.SGD(self.parameters(), lr=lr, momentum=0.9, weight_decay=weight_decay),
         }
         if optimizer not in opt_map:
             raise ValueError(f"Optimiseur inconnu : '{optimizer}'. Disponibles : {list(opt_map)}")
         opt = opt_map[optimizer]()
 
-        # FaImbalanceLoss v3.1 — BCE (ou MSE) + penalite ontologique + pos_weight
-        from bokono.ml.torch_loss import FaImbalanceLoss
-        loss_fn = FaImbalanceLoss(lambda_fa=lambda_fa, pos_weight=pos_weight, task=task)
-        scaler = torch.amp.GradScaler('cuda') if is_cuda else None
+        use_logits = (active_task == "classification" and self.output_mode == "standard")
+        kpoli_pols = getattr(self.embedding, "kpoli_polarities").detach().cpu().numpy()
+        loss_fn = FaImbalanceLoss(
+            lambda_fa=lambda_fa,
+            pos_weight=pos_weight,
+            task=active_task,
+            from_logits=use_logits,
+            polarity_weights=kpoli_pols,
+            polarity_mode=self.polarity_mode,
+            seed=self.seed,
+        ).to(device)
 
-        n_samples = X_t.shape[0]
+        scaler = torch.amp.GradScaler("cuda") if is_cuda else None
         history: dict[str, list[float]] = {"loss": [], "val_loss": []}
 
-        # Compilation JIT optionnelle (PyTorch 2.0+)
         if compile:
             self.compile_model()
+
+        best_val_loss = float("inf")
+        best_state = None
+        epochs_no_improve = 0
+
+        X_v_tensor = None
+        y_v_tensor = None
+        if X_val is not None and y_val is not None:
+            X_v_tensor = torch.tensor(np.asarray(X_val, dtype=np.float32), device=device)
+            y_v_tensor = torch.tensor(np.asarray(y_val, dtype=np.float32), device=device)
+            if y_v_tensor.ndim == 1:
+                y_v_tensor = y_v_tensor.unsqueeze(1)
 
         self.train()
 
@@ -351,90 +357,71 @@ class TorchFaNet(nn.Module):
             n_batches = 0
 
             for X_b, y_b in loader:
-                # Streaming en VRAM
                 X_b, y_b = X_b.to(device), y_b.to(device)
-
                 opt.zero_grad()
-                
-                # Choix de la passe avant selon la tache
-                def _forward_pass(X_batch):
-                    if task == "classification":
-                        return self.forward_logits(X_batch, return_dual=True)
-                    else:
-                        return self.forward(X_batch, return_dual=True)
 
-                # Forward pass avec AMP si GPU
                 if is_cuda and scaler is not None:
-                    with torch.amp.autocast('cuda'):
-                        pred, attn_g, attn_d = _forward_pass(X_b)
+                    with torch.amp.autocast("cuda"):
+                        if use_logits:
+                            pred, attn_g, attn_d = self.forward_logits(X_b, return_dual=True)
+                        else:
+                            pred, attn_g, attn_d = self.forward(X_b, return_dual=True)
                         loss = loss_fn(pred, y_b, attn_g, attn_d)
-                    # Backward pass scalé (pour éviter l'underflow en FP16)
                     scaler.scale(loss).backward()
                     scaler.step(opt)
                     scaler.update()
                 else:
-                    pred, attn_g, attn_d = _forward_pass(X_b)
+                    if use_logits:
+                        pred, attn_g, attn_d = self.forward_logits(X_b, return_dual=True)
+                    else:
+                        pred, attn_g, attn_d = self.forward(X_b, return_dual=True)
                     loss = loss_fn(pred, y_b, attn_g, attn_d)
                     loss.backward()
                     opt.step()
 
-                epoch_loss += loss.item()
+                epoch_loss += float(loss.item())
                 n_batches += 1
 
             avg_loss = epoch_loss / max(n_batches, 1)
             history["loss"].append(avg_loss)
 
-            # Validation
             val_loss_val = 0.0
-            if X_val is not None and y_val is not None:
+            if X_v_tensor is not None and y_v_tensor is not None:
                 self.eval()
                 with torch.no_grad():
-                    X_v = torch.tensor(np.asarray(X_val, dtype=np.float32), device=device)
-                    y_v = torch.tensor(np.asarray(y_val, dtype=np.float32), device=device)
-                    if y_v.ndim == 1:
-                        y_v = y_v.unsqueeze(1)
-                        
-                    if is_cuda:
-                        with torch.amp.autocast('cuda'):
-                            if task == "classification":
-                                val_pred, v_attn_g, v_attn_d = self.forward_logits(X_v, return_dual=True)
-                            else:
-                                val_pred, v_attn_g, v_attn_d = self.forward(X_v, return_dual=True)
-                            val_loss_val = loss_fn(val_pred, y_v, v_attn_g, v_attn_d).item()
+                    if use_logits:
+                        val_pred, v_attn_g, v_attn_d = self.forward_logits(X_v_tensor, return_dual=True)
                     else:
-                        if task == "classification":
-                            val_pred, v_attn_g, v_attn_d = self.forward_logits(X_v, return_dual=True)
-                        else:
-                            val_pred, v_attn_g, v_attn_d = self.forward(X_v, return_dual=True)
-                        val_loss_val = loss_fn(val_pred, y_v, v_attn_g, v_attn_d).item()
-                        
+                        val_pred, v_attn_g, v_attn_d = self.forward(X_v_tensor, return_dual=True)
+                    val_loss_val = float(loss_fn(val_pred, y_v_tensor, v_attn_g, v_attn_d).item())
                 history["val_loss"].append(val_loss_val)
+
+                if early_stopping_patience > 0:
+                    if val_loss_val < best_val_loss - 1e-5:
+                        best_val_loss = val_loss_val
+                        best_state = copy.deepcopy(self.state_dict())
+                        epochs_no_improve = 0
+                    else:
+                        epochs_no_improve += 1
+                        if epochs_no_improve >= early_stopping_patience:
+                            if verbose:
+                                print(f"  Early stopping à l'époque {epoch}/{epochs} (best val_loss={best_val_loss:.5f})")
+                            break
                 self.train()
 
             if verbose and (epoch % verbose_every == 0 or epoch == 1):
-                val_str = f" | val_loss={val_loss_val:.5f}" if X_val is not None else ""
+                val_str = f" | val_loss={val_loss_val:.5f}" if X_v_tensor is not None else ""
                 print(f"  Époque {epoch:4d}/{epochs} | loss={avg_loss:.5f}{val_str}")
+
+        if best_state is not None:
+            self.load_state_dict(best_state)
 
         self.eval()
         return history
 
-    # ─── Inférence ────────────────────────────────────────────────────────────
-
     @torch.no_grad()
     def predict(self, x: np.ndarray, return_attention: bool = False, return_dual: bool = False):
-        """
-        Prédiction avec interprétation Fâ.
-
-        Args:
-            x: (batch_size, n_features) ou (n_features,) — NumPy
-            return_attention: Si True, retourne la matrice d'attention (256)
-            return_dual: Si True, retourne (attn_gauche(16), attn_droit(16))
-
-        Returns:
-            Si normal: (predictions: np.ndarray, interpretations: list[dict])
-            Si return_attention: (preds, dus, attn(batch, n_features, 256))
-            Si return_dual: (preds, dus, attn_g, attn_d)
-        """
+        """Prédiction numérique accompagnée de l'interprétation symbolique Fâ."""
         expected_w = self.seq_len * self.n_features if self.seq_len > 0 else self.n_features
         _validate_input(x, None, expected_w)
         self.eval()
@@ -446,39 +433,27 @@ class TorchFaNet(nn.Module):
             preds, dus = self.decoder.forward_with_interpretation(last_h)
             if return_dual:
                 return preds.cpu().numpy(), dus, attn_g.cpu().numpy(), attn_d.cpu().numpy()
-            elif return_attention:
+            if return_attention:
                 attn_matrix = attn_g.unsqueeze(-1) * attn_d.unsqueeze(-2)
-                attn_weights = attn_matrix.view(x_t.shape[0], self.n_features, 256)
+                attn_weights = attn_matrix.reshape(x_t.shape[0], self.n_features, 256)
                 return preds.cpu().numpy(), dus, attn_weights.cpu().numpy()
-            else:
-                return preds.cpu().numpy(), dus
+            return preds.cpu().numpy(), dus
 
-        # Mode Tabulaire
         if return_dual:
-            emb, attn, attn_g, attn_d = self.embedding(x_t, return_dual=True)
-            h = self.hidden(emb)
-            if self.dropout_layer is not None:
-                h = self.dropout_layer(h)
+            h, _, attn_g, attn_d = self._encode_tabular(x_t, return_dual=True)
             preds, dus = self.decoder.forward_with_interpretation(h)
             return preds.cpu().numpy(), dus, attn_g.cpu().numpy(), attn_d.cpu().numpy()
-        elif return_attention:
-            emb, attn = self.embedding(x_t, return_attention=True)
-            h = self.hidden(emb)
-            if self.dropout_layer is not None:
-                h = self.dropout_layer(h)
+        if return_attention:
+            h, attn = self._encode_tabular(x_t, return_attention=True)
             preds, dus = self.decoder.forward_with_interpretation(h)
             return preds.cpu().numpy(), dus, attn.cpu().numpy()
-        else:
-            emb = self.embedding(x_t)
-            h = self.hidden(emb)
-            if self.dropout_layer is not None:
-                h = self.dropout_layer(h)
-            preds, dus = self.decoder.forward_with_interpretation(h)
-            return preds.cpu().numpy(), dus
+        h = self._encode_tabular(x_t)
+        preds, dus = self.decoder.forward_with_interpretation(h)
+        return preds.cpu().numpy(), dus
 
     @torch.no_grad()
     def predict_proba(self, x: np.ndarray) -> np.ndarray:
-        """Prediction numerique seule."""
+        """Prédiction numérique seule."""
         expected_w = self.seq_len * self.n_features if self.seq_len > 0 else self.n_features
         _validate_input(x, None, expected_w)
         self.eval()
@@ -486,11 +461,9 @@ class TorchFaNet(nn.Module):
         x_t = torch.tensor(np.atleast_2d(np.asarray(x, dtype=np.float32)), device=device)
         return self(x_t).cpu().numpy()
 
-    # ─── Évaluation ───────────────────────────────────────────────────────────
-
     @torch.no_grad()
     def evaluate(self, X: np.ndarray, y: np.ndarray) -> dict[str, float]:
-        """Evalue le reseau sur un jeu de donnees."""
+        """Évalue le réseau sur un jeu de données."""
         expected_w = self.seq_len * self.n_features if self.seq_len > 0 else self.n_features
         _validate_input(X, y, expected_w)
         self.eval()
@@ -504,22 +477,23 @@ class TorchFaNet(nn.Module):
         pred = self(X_t)
         mse = float(torch.mean((pred - y_t) ** 2).item())
         mae = float(torch.mean(torch.abs(pred - y_t)).item())
-        rmse = float(torch.sqrt(torch.tensor(mse)).item())
+        rmse = float(np.sqrt(mse))
 
         metrics: dict[str, float] = {"loss": mse, "mae": mae, "rmse": rmse}
 
-        if self.n_outputs == 1:
+        if self.n_outputs == 1 and self.task == "classification":
             y_cls = (pred >= 0.5).int()
             y_true_cls = (y_t >= 0.5).int()
             metrics["accuracy"] = float(torch.mean((y_cls == y_true_cls).float()).item())
 
         return metrics
 
-    # ─── Persistance ──────────────────────────────────────────────────────────
+    def count_parameters(self) -> int:
+        """Retourne le nombre exact de paramètres entraînables du modèle."""
+        return int(sum(p.numel() for p in self.parameters() if p.requires_grad))
 
     def save(self, path: str) -> None:
         """Sauvegarde le modèle complet (state_dict + métadonnées)."""
-        import os
         from bokono.core.fa_encoder import get_kb_hash
         os.makedirs(os.path.dirname(path) if os.path.dirname(path) else ".", exist_ok=True)
         torch.save({
@@ -534,26 +508,27 @@ class TorchFaNet(nn.Module):
             "bidirectional": self.bidirectional,
             "num_layers": self.num_layers,
             "dropout": self.dropout_val,
+            "task": self.task,
+            "output_mode": self.output_mode,
+            "polarity_mode": self.polarity_mode,
+            "init_mode": self.init_mode,
+            "per_feature_queries": self.per_feature_queries,
+            "auto_normalize": self.auto_normalize,
             "version": self.VERSION,
             "kb_hash": get_kb_hash(),
         }, path)
 
     @classmethod
     def load(cls, path: str, **kwargs) -> "TorchFaNet":
-        """Charge un modèle sauvegardé."""
+        """Charge un modèle sauvegardé (weights_only=True)."""
         from bokono.core.fa_encoder import get_kb_hash
-        
-        # SÉCURITÉ : weights_only=True empêche l'exécution de code arbitraire
-        # via pickle deserialization (CVE connue sur torch.load).
+
         data = torch.load(path, weights_only=True)
-        
-        # Vérification d'intégrité de la KB
         current_hash = get_kb_hash()
         saved_hash = data.get("kb_hash")
         if saved_hash and saved_hash != current_hash:
             logger.warning(
-                "La Data Poisoning Protection signale que la base de connaissance (KB) "
-                "a été modifiée depuis l'entraînement du modèle. Les interprétations peuvent diverger."
+                "La base de connaissances active diffère de celle utilisée à l'entraînement."
             )
         net = cls(
             n_features=data["n_features"],
@@ -566,58 +541,59 @@ class TorchFaNet(nn.Module):
             bidirectional=data.get("bidirectional", False),
             num_layers=data.get("num_layers", 1),
             dropout=data.get("dropout", 0.0),
+            task=data.get("task", "classification"),
+            output_mode=data.get("output_mode", "standard"),
+            polarity_mode=data.get("polarity_mode", "fa"),
+            init_mode=data.get("init_mode", "fa"),
+            per_feature_queries=data.get("per_feature_queries", True),
+            auto_normalize=data.get("auto_normalize", True),
             **kwargs,
         )
         net.load_state_dict(data["state_dict"])
         net.eval()
         return net
 
-    # ─── Affichage ────────────────────────────────────────────────────────────
-
     def summary(self) -> None:
-        """Affiche le résumé de l'architecture FaNet v0.3."""
+        """Affiche le résumé exact de l'architecture (mode tabulaire ou LSTM)."""
         total_params = sum(p.numel() for p in self.parameters())
         trainable = sum(p.numel() for p in self.parameters() if p.requires_grad)
         non_trainable = total_params - trainable
-
         emb_dim = self.n_features * TorchFaEmbedding.FA_EMBED_DIM
+        device = next(self.parameters()).device
 
         print("=" * 65)
-        print(f"  FaNet v{self.VERSION} — Réseau de neurones béninois (PyTorch)")
+        print(f"  FaNet v{self.VERSION} : Réseau neuro-symbolique Fâ (PyTorch)")
         print("=" * 65)
-        print(f"  Backend            : PyTorch {torch.__version__}")
-        device = next(self.parameters()).device
-        print(f"  Device             : {device}")
-        print(f"  Activation cachée  : {self.activation_name}")
+        print(f"  Backend            : PyTorch {torch.__version__} ({device})")
+        print(f"  Mode               : {'LSTM Temporel (seq=' + str(self.seq_len) + ')' if self.seq_len > 0 else 'Tabulaire'}")
+        print(f"  Tâche / Sortie     : {self.task} / {self.output_mode}")
+        print(f"  Polarité / Init    : {self.polarity_mode} / {self.init_mode}")
         print()
         print(f"  {'Couche':<25} {'Forme sortie':<20} {'Paramètres':>12}")
         print("  " + "-" * 60)
 
-        # Embedding : 2 projections Q_gauche, Q_droit
         emb_p = sum(p.numel() for p in self.embedding.parameters())
-        print(f"  {'FaEmbed Combinatory v3':<25} {'(' + str(emb_dim) + ',)':<20} {emb_p:>12,}")
+        print(f"  {'TorchFaEmbedding (16x16)':<25} {'(' + str(emb_dim) + ',)':<20} {emb_p:>12,}")
 
-        hidden_p = sum(p.numel() for p in self.hidden.parameters())
-        print(f"  {'FaHidden (Fâ)':<25} {'(' + str(self.hidden_dim) + ',)':<20} {hidden_p:>12,}")
+        if self.seq_len > 0 and self.lstm_layer is not None:
+            lstm_p = sum(p.numel() for p in self.lstm_layer.parameters())
+            out_dim = self.hidden_dim * (2 if self.bidirectional else 1)
+            print(f"  {'LSTM Temporel':<25} {'(' + str(out_dim) + ',)':<20} {lstm_p:>12,}")
+        elif self.hidden is not None:
+            hidden_p = sum(p.numel() for p in self.hidden.parameters())
+            print(f"  {'TorchFaHidden':<25} {'(' + str(self.hidden_dim) + ',)':<20} {hidden_p:>12,}")
 
         dec_p = sum(p.numel() for p in self.decoder.parameters())
-        print(f"  {'FaDecoder (Meji)':<25} {'(' + str(self.n_outputs) + ',)':<20} {dec_p:>12,}")
+        print(f"  {'TorchFaDecoder':<25} {'(' + str(self.n_outputs) + ',)':<20} {dec_p:>12,}")
 
         print("  " + "-" * 60)
         print(f"  {'TOTAL':<25} {'':<20} {total_params:>12,}")
         print(f"  {'  entraînables':<25} {'':<20} {trainable:>12,}")
         print(f"  {'  non-entraînables':<25} {'':<20} {non_trainable:>12,}")
         print("=" * 65)
-        print(f"  Initialisation     : Matrice-256 (tenseur 16×16×4)")
-        print(f"  Embedding          : COMBINATOIRE (Kronecker 16x16)")
-        print(f"  Polarité Kpoli     : entraînable (16 params)")
-        print(f"  Interprétation     : chaque prédiction → du Fâ")
-        print("=" * 65)
-
-    # ─── Intégration Scikit-Learn (MLOps) ─────────────────────────────────────
 
     def get_params(self, deep: bool = True) -> dict:
-        """Compatibilité native avec Scikit-Learn (GridSearchCV, Pipelines)."""
+        """Retourne les hyperparamètres du modèle."""
         return {
             "n_features": self.n_features,
             "hidden_dim": self.hidden_dim,
@@ -630,63 +606,48 @@ class TorchFaNet(nn.Module):
             "bidirectional": self.bidirectional,
             "num_layers": self.num_layers,
             "dropout": self.dropout_val,
+            "task": self.task,
+            "output_mode": self.output_mode,
+            "polarity_mode": self.polarity_mode,
+            "init_mode": self.init_mode,
+            "per_feature_queries": self.per_feature_queries,
+            "auto_normalize": self.auto_normalize,
         }
-
-    def set_params(self, **params) -> "TorchFaNet":
-        """Compatibilité native avec Scikit-Learn."""
-        for key, value in params.items():
-            setattr(self, key, value)
-        return self
-
-    # ─── Déploiement Edge (Industriel) ────────────────────────────────────────
 
     def export_onnx(self, path: str, input_shape: tuple[int, ...] | None = None) -> None:
         """
-        Exporte le cœur tensoriel Fâ en fichier ONNX pour l'inférence C++/Go Edge.
-        
-        Nécessite : `pip install onnx onnxscript`
-        
-        Args:
-            path: Chemin du fichier de destination (ex: 'model.onnx')
-            input_shape: Forme du tenseur d'entrée factice (par défaut: (1, n_features))
+        Exporte la passe avant numérique en ONNX (compatible mode tabulaire et mode LSTM).
         """
-        try:
-            import onnxscript  # noqa: F401
-        except ImportError:
-            raise ImportError("L'export ONNX nécessite 'onnxscript'. Exécutez : pip install onnx onnxscript")
         self.eval()
         device = next(self.parameters()).device
-        
-        # Le tenseur factice (Dummy Tensor) sert à tracer le graphe PyTorch
+
         if input_shape is None:
-            input_shape = (1, self.n_features)
-            
+            expected_w = self.seq_len * self.n_features if self.seq_len > 0 else self.n_features
+            input_shape = (1, expected_w)
+
         dummy_input = torch.randn(*input_shape, dtype=torch.float32, device=device)
-        
-        # On exporte UNIQUEMENT la passe "forward numeric" car l'analyse JSON 
-        # (return_dual=True) de forward_with_interpretation n'est pas "traçable" en ONNX.
-        
+
         class _OnnxForwardWrapper(nn.Module):
-            def __init__(self, core_net):
+            def __init__(self, core_net: TorchFaNet):
                 super().__init__()
                 self.core = core_net
-            def forward(self, x):
+
+            def forward(self, x: torch.Tensor) -> torch.Tensor:
                 return self.core(x)
-                
+
         wrapper = _OnnxForwardWrapper(self)
-        
-        import os
         os.makedirs(os.path.dirname(path) if os.path.dirname(path) else ".", exist_ok=True)
-        
-        torch.onnx.export(
-            wrapper, 
-            dummy_input, 
-            path,
+
+        export_kwargs = dict(
             export_params=True,
             opset_version=14,
             do_constant_folding=True,
-            input_names=['input'],
-            output_names=['output'],
-            dynamic_axes={'input': {0: 'batch_size'}, 'output': {0: 'batch_size'}}
+            input_names=["input"],
+            output_names=["output"],
+            dynamic_axes={"input": {0: "batch_size"}, "output": {0: "batch_size"}},
         )
-        logger.info(f"Modèle Fâ (v{self.VERSION}) exporté avec succès en ONNX vers {path}")
+        try:
+            torch.onnx.export(wrapper, dummy_input, path, dynamo=False, **export_kwargs)
+        except TypeError:
+            torch.onnx.export(wrapper, dummy_input, path, **export_kwargs)
+        logger.info(f"Modèle FaNet v{self.VERSION} exporté en ONNX vers {path}")

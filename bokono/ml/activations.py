@@ -59,36 +59,47 @@ FA_GAIN_SURSAT = 0.1   # sursaturation → régulation (sagesse du Fâ)
 _DEFAULT_POLARITY_WEIGHTS = np.full(16, 0.5, dtype=np.float32)
 
 
-def load_polarity_weights() -> np.ndarray:
+def load_polarity_weights(
+    polarity_mode: str = "fa",
+    seed: int = 42,
+) -> np.ndarray:
     """
-    Charge les poids de polarité réels depuis la base de connaissance.
+    Charge les 16 poids de polarité des Kpoli depuis la Matrice-256.
 
-    Calcule la polarité moyenne de chaque Kpoli (colonne) sur les 16 du
-    de cette colonne dans la matrice 16×16.
+    Args:
+        polarity_mode:
+            - "fa"       : polarités binaires canoniques de la diagonale Meji
+            - "constant" : vecteur uniforme 0.5 (contrôle d'ablation A2)
+            - "permuted" : permutation aléatoire déterministe des polarités Fâ (ablation A3)
+        seed: graine aléatoire utilisée uniquement en mode "permuted".
 
     Returns:
-        np.ndarray de forme (16,), valeurs entre 0.0 et 1.0
+        np.ndarray de forme (16,), dtype float32, valeurs dans [0.0, 1.0]
     """
+    if polarity_mode == "constant":
+        return np.full(16, 0.5, dtype=np.float32)
+
     try:
         from bokono.core.fa_matrix import FaMatrix
-        _POLARITE_NUM = {"favorable": 1.0, "neutre": 0.5,
-                         "défavorable": 0.0, "non_défini": 0.5}
         matrix = FaMatrix()
-        weights = np.zeros(16, dtype=np.float32)
-        for j in range(16):  # Pour chaque colonne (Kpoli droit)
-            col_polarities = []
-            for i in range(16):  # Pour chaque ligne (Kpoli gauche)
-                du = matrix._matrix[i][j]
-                pol = _POLARITE_NUM.get(du.get("polarite", "non_défini"), 0.5)
-                col_polarities.append(pol)
-            weights[j] = np.mean(col_polarities)
-        return weights
+        weights = matrix.meji_polarity_vector().astype(np.float32)
     except (ImportError, FileNotFoundError, KeyError, TypeError, ValueError) as e:
         import logging
         logging.getLogger("bokono.ml.activations").warning(
-            f"Impossible de charger les poids de polarité (utilise les valeurs par défaut) : {e}"
+            f"Impossible de charger les poids de polarité (valeurs binaires par défaut) : {e}"
         )
-        return _DEFAULT_POLARITY_WEIGHTS.copy()
+        weights = np.array([(4 - bin(k).count("1")) / 4.0 for k in range(16)], dtype=np.float32)
+
+    if polarity_mode == "permuted":
+        rng = np.random.default_rng(seed)
+        perm = rng.permutation(16)
+        return weights[perm].copy()
+
+    if polarity_mode != "fa":
+        raise ValueError(
+            f"polarity_mode invalide : '{polarity_mode}'. Attendu : 'fa', 'constant' ou 'permuted'."
+        )
+    return weights
 
 
 # ─── T8 : FaReLU ─────────────────────────────────────────────────────────────

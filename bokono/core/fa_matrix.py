@@ -73,14 +73,17 @@ class FaMatrix:
         Calcule le vecteur de caractéristiques d'un du.
 
         Dimensions :
-          [0] valeur_norm  : position dans la matrice, normalisée 0→1
-          [1] polarite     : favorable=1.0, neutre=0.5, défavorable=0.0
-          [2] intensite    : force du signe (0.0 → 1.0)
-          [3] est_meji     : signe double (1.0) ou non (0.0)
+          [0] valeur_norm : position dans la matrice, normalisée dans [0, 1]
+          [1] polarite    : polarité numérique exacte [0.0, 1.0] (GBE=1.0, IKA=0.0)
+          [2] intensite   : symétrie structurelle gauche/droite (0.0 à 1.0)
+          [3] est_meji    : signe double (1.0) ou non (0.0)
         """
         val_norm = du["valeur_decimale"] / 255.0
-        polarite = _POLARITE_NUM.get(du.get("polarite", "non_défini"), 0.5)
-        intensite = du.get("intensite", 0.5)
+        if "polarite_numerique" in du:
+            polarite = float(du["polarite_numerique"])
+        else:
+            polarite = _POLARITE_NUM.get(du.get("polarite", "non_défini"), 0.5)
+        intensite = float(du.get("intensite", 0.5))
         est_meji = 1.0 if du.get("est_meji", False) else 0.0
         return [val_norm, polarite, intensite, est_meji]
 
@@ -143,10 +146,20 @@ class FaMatrix:
         P = np.zeros((16, 16), dtype=np.float32)
         for i in range(16):
             for j in range(16):
-                P[i, j] = _POLARITE_NUM.get(
-                    self._matrix[i][j].get("polarite", "non_défini"), 0.5
-                )
+                du = self._matrix[i][j]
+                if "polarite_numerique" in du:
+                    P[i, j] = float(du["polarite_numerique"])
+                else:
+                    P[i, j] = _POLARITE_NUM.get(du.get("polarite", "non_défini"), 0.5)
         return P
+
+    def meji_polarity_vector(self) -> np.ndarray:
+        """
+        Retourne le vecteur (16,) des polarités intrinsèques des 16 Kpoli
+        (diagonale Meji de la matrice 16x16).
+        """
+        pol_map = self.polarity_map()
+        return np.diag(pol_map).astype(np.float32).copy()
 
     def get_meji_diagonal(self) -> list[dict]:
         """
