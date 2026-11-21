@@ -339,8 +339,8 @@ class TestTorchFaNetAutograd:
     def test_polarity_weights_receive_gradients(self, X_np, y_np):
         """Les poids de polarité Kpoli reçoivent un gradient."""
         net = TorchFaNet(n_features=4, hidden_dim=16)
-        x_t = torch.tensor(X_np[:5], dtype=torch.float64)
-        y_t = torch.tensor(y_np[:5], dtype=torch.float64).unsqueeze(1)
+        x_t = torch.tensor(X_np[:5], dtype=torch.float32)
+        y_t = torch.tensor(y_np[:5], dtype=torch.float32).unsqueeze(1)
 
         out = net(x_t)
         loss = nn.MSELoss()(out, y_t)
@@ -357,8 +357,8 @@ class TestTorchFaNetAutograd:
     def test_all_parameters_have_gradients(self, X_np, y_np):
         """Tous les paramètres reçoivent un gradient après une passe."""
         net = TorchFaNet(n_features=4, hidden_dim=16)
-        x_t = torch.tensor(X_np[:5], dtype=torch.float64)
-        y_t = torch.tensor(y_np[:5], dtype=torch.float64).unsqueeze(1)
+        x_t = torch.tensor(X_np[:5], dtype=torch.float32)
+        y_t = torch.tensor(y_np[:5], dtype=torch.float32).unsqueeze(1)
 
         out = net(x_t)
         loss = nn.MSELoss()(out, y_t)
