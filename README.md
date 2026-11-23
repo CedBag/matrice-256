@@ -1,13 +1,14 @@
-# MATRICE-256 (FaNet v4.0 / bokono)
+# MATRICE-256 (FaNet v4.2 / bokono)
 
-**Framework d'Intelligence Artificielle Neuro-Symbolique inspiré de la combinatoire binaire du Fâ (Bénin)**
+**Framework d'Intelligence Artificielle Neuro-Symbolique fondé sur la combinatoire binaire du Fâ (Bénin)**
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-%23EE4C2C.svg?style=flat&logo=PyTorch&logoColor=white)](https://pytorch.org/)
 [![FOCAC 2026](https://img.shields.io/badge/FOCAC%20%2F%20China--BRICS%202026-Cas%20Repr%C3%A9sentatif-1e40af.svg)](#reconnaissance-internationale)
+[![Benchmarks Kaggle T4](https://img.shields.io/badge/Benchmarks-Kaggle%20Tesla%20T4%20(25%20runs)-059669.svg)](#résultats-expérimentaux-vérifiés-kaggle-tesla-t4-v42)
 [![License: Academic Research](https://img.shields.io/badge/License-Academic%20Research-red.svg)](LICENSE)
 
-> **English Summary:** Matrice-256 (FaNet / `bokono`) is a lightweight PyTorch neuro-symbolic framework exploring a structured inductive bias inspired by the 8-bit binary combinatorics of the Beninese Fa system (16 fundamental Kpoli keys, 256 composite states). Selected in October 2026 as a representative case in the *AI Case Innovation Competition for African Youth* (FOCAC / China-BRICS AI Center, 114 selected out of 738 submissions across 47 African countries, Technological Progress track).
+> **English Summary:** Matrice-256 (FaNet v4.2 / `bokono`) is a compact PyTorch neuro-symbolic framework (~2,361 trainable parameters, 30.2 KB ONNX export) built on the 8-bit binary combinatorics of the Beninese Fa system (16 Kpoli keys on the 4-bit binary hypercube `{-1, +1}^4`, 256 composite Du states via Kronecker attention). Selected in October 2026 as a representative case in the *AI Case Innovation Competition for African Youth* (FOCAC / China-BRICS AI Center, 114 selected out of 738 submissions across 47 African countries, Technological Progress track). Evaluated across 8 reproducible Kaggle Tesla T4 GPU benchmarks (5-Fold x 5 seeds = 25 paired runs with Wilcoxon signed-rank tests).
 
 ---
 
@@ -21,44 +22,59 @@ En **octobre 2026**, **Matrice-256 (FaNet)** a été sélectionné comme **cas r
 
 ---
 
-## Vue d'ensemble du projet
+## Architecture neuro-symbolique (FaNet v4.2)
 
-**Matrice-256** explore l'intégration d'un système formel endogène africain, la combinatoire binaire du **Fâ** (16 signes fondamentaux sur 4 bits donnant 256 combinaisons sur 8 bits), comme **biais inductif structurel** au sein d'un réseau de neurones PyTorch (`TorchFaNet`) :
+**Matrice-256** formalise la combinatoire binaire 8 bits du **Fâ** (16 Kpoli sur 4 bits produisant `16 x 16 = 256` Du) comme un **biais inductif structurel** 100 % mathématique, public et reproductible :
 
-1. **Architecture combinatoire (`TorchFaEmbedding`)** : deux projections de requête (Kpoli gauche et Kpoli droit) calculent une attention croisée sur les 16 clés de base et forment une distribution sur les 256 états par produit de Kronecker (`16 x 16`).
-2. **Perte à contrainte ontologique (`FaImbalanceLoss`)** : combine une perte statistique (`BCEWithLogitsLoss` ou `MSELoss`) avec un terme de régularisation qui pénalise l'écart entre la prédiction du modèle et la polarité composite de l'espace latent.
-3. **Activations paramétrées et mode temporel** : supporte le mode tabulaire (`TorchFaHidden` avec `TorchLearnableFaSigma` ou `FaReLU`) et le mode séquentiel pour capteurs IoT (`nn.LSTM`, optionnellement bidirectionnel et multicouche).
-4. **Exécution locale et frugale** : modèle léger (~1 100 paramètres en mode tabulaire sur Pima Diabetes, ~6 000 en mode LSTM IoT), fonctionnant entièrement hors-ligne (air-gapped) avec export ONNX intégré.
+1. **Embedding combinatoire sur hypercube 4 bits (`TorchFaEmbedding`)** :
+   - Les 16 clés Kpoli forment exactement les 16 sommets de l'hypercube binaire `{-1, +1}^4` (`GBE = [+1,+1,+1,+1]`, ..., `IKA = [-1,-1,-1,-1]`).
+   - Des requêtes combinées locale (par variable) et globale (cross-features) calculent deux attentions sur les 16 Kpoli puis forment la distribution sur les 256 Du par produit de Kronecker (`16 x 16`).
+   - Normalisation lisse par sigmoïde ajustée strictement sur `X_train` (zéro fuite de données, zéro coupure des valeurs négatives).
+2. **Bloc caché résiduel hybride (`FaReLU -> FaSigma`)** :
+   - Un premier étage `FaReLU` (continue par morceaux) capture les frontières non linéaires nettes multi-variables.
+   - Une branche résiduelle `TorchLearnableFaSigma` (interpolation lisse sur les 16 Kpoli) apporte la régularisation probabiliste, la calibration et la résistance au bruit.
+3. **Perte ontologique factorisée (`FaImbalanceLoss`)** :
+   - Les polarités binaires canoniques vérifient exactement `pol(i, j) = (pol(i) + pol(j)) / 2`, garantissant une identité algébrique exacte entre la polarité moyenne sur les 256 Du et les marginales sur 16 Kpoli en `O(16)`.
+4. **Mode temporel BiLSTM et déploiement frugal** :
+   - Mode séquentiel natif (`seq_len > 0`, BiLSTM), exécution locale hors-ligne (air-gapped), **2 361 paramètres** en mode tabulaire sur Pima Diabetes et export ONNX de **30,2 Ko**.
 
-Documentation scientifique :
-- [Livre blanc technique (FR)](docs/whitepaper_matrice256.md)
-- [Article académique (EN)](docs/academic_paper_en.md)
-- [Article académique (FR)](docs/academic_paper_fr.md)
+Documentation scientifique complète :
+- [Livre blanc technique v4.2 (FR)](docs/whitepaper_matrice256.md)
+- [Article académique v4.2 (EN)](docs/academic_paper_en.md)
+- [Article académique v4.2 (FR)](docs/academic_paper_fr.md)
+- [Rapport brut complet Kaggle Tesla T4](docs/benchmarks_v42_kaggle.md)
 
 ---
 
-## Note sur la base de connaissances publique et la reproductibilité
+## Résultats expérimentaux vérifiés (Kaggle Tesla T4, v4.2)
 
-Afin de protéger les textes traditionnels et les annotations privées de la base de connaissances complète (`fa_knowledge_private.json`, exclue du dépôt via `.gitignore`), ce dépôt public distribue un fichier épuré (`bokono/core/fa_knowledge_public.json`) où toutes les polarités sont neutralisées à `"neutre"` (`0.5`).
+Tous les résultats ci-dessous sont issus du protocole reproductible [tests/run_benchmark_v5.py](tests/run_benchmark_v5.py) exécuté sur **Kaggle GPU Tesla T4** (PyTorch `2.11.0+cu130`, `5-Fold x 5 seeds = 25 runs` appariés, tests statistiques de Wilcoxon, 79/79 tests unitaires `pytest` validés) :
 
-Conséquence importante pour l'évaluation scientifique : dans la configuration publique actuelle (`v4.0.0`), la pénalité `FaImbalanceLoss` se comporte comme une régularisation de confiance vers `0.5`. L'intégration d'une table de polarités numériques publiques reproductibles (dérivée de propriétés combinatoires binaires sans exposer les textes privés) fait partie des priorités de la prochaine itération (`v4.1 / v5.0`).
+| Expérience | Données et protocole | Résultat FaNet v4.2 (`F1_FaNet_Full`) | Comparaison aux baselines contrôlées |
+|---|---|---|---|
+| **Exp 1 : Biomédical (Breast Cancer)** | 569 patients, 30 biomarqueurs, 25 runs | **F1 0,9605, ROC-AUC 0,9949, PR-AUC 0,9935, Brier 0,0229** | Bat significativement `RF` et `HistGB` sur les 5 métriques (`p <= 0,045`) et `MLP` iso-paramètres en ROC-AUC (`p = 0,0037`) et PR-AUC (`p = 0,0046`) |
+| **Exp 1 : Biomédical (Pima Diabetes)** | 768 patients, 8 biomarqueurs, 25 runs | **F1 0,6308 (+/- 0,042), ROC-AUC 0,8318, PR-AUC 0,7149** | Bat significativement `HistGB` (`p = 0,0001`) et `MLP` iso-paramètres (`ROC-AUC p = 0,0045`, `PR-AUC p = 0,0088`, `Brier p = 0,0061`) avec une variance F1 divisée par 2,5 |
+| **Exp 1 : Agriculture multi-clusters** | 2 200 parcelles (`rice, jute, coconut`), 25 runs | **F1 0,9879, ROC-AUC 0,9999, PR-AUC 0,9994, ECE 0,38 %** | +12,4 points de F1 vs v4.1 ; équivalent statistique à `MLP` (`0,9899`, `p = 0,124`), ECE meilleure que `RF` (`0,83 %`, `p < 0,0001`) |
+| **Exp 2 : Robustesse au bruit (50 %)** | Bruit gaussien sur test (5 folds x 5 tirages) | **Agri : F1 0,6943, ROC-AUC 0,9447** (`NoLoss` : `0,7061 / 0,9545`) | Surpasse fortement `RF` (`F1 0,5403`) et `HistGB` (`F1 0,5792`) à 50 % de bruit ; sur Pima à 50 % de bruit, `FaNet_NoLoss` domine tous les modèles (`F1 0,6253`, `PR-AUC 0,6701`) |
+| **Exp 3 : Généralisation OOD sans fuite** | Train `rice`, Test `jute` et `maize`, négatifs disjoints | **Jute : Rappel 100 %, F1 100 % ; Maïs : Rappel 47,0 %, F1 60,5 %, ROC-AUC 1,000** | Sur Maïs, `RF` et `HistGB` tombent à `0 %`, et la permutation aléatoire de l'hypercube Fâ (`A3_Permuted`) chute de **-38,8 points F1** (`21,7 %`) |
+| **Exp 4 : Calibration clinique réelle** | ECE pondérée standard (10 bins), OOF 5-Fold | **Breast Cancer : ECE 1,27 % (1er/6)** ; **Pima : 3,96 %** (`FaDual` : **1,73 %**, 1er/6) | Meilleure calibration clinique que `LogReg` (`1,50 %`), `HistGB` (`2,14 %`), `MLP` (`2,91 %`) et `RF` (`3,59 %`) sur Breast Cancer |
+| **Exp 5 : Régression continue** | Sklearn Diabetes (réel) + Prix agricoles (FCFA) | **Prix : MAE 42,90 FCFA, R2 0,9476 ; Diabetes : MAE 45,32, R2 0,4561** | Bat `RF` (`43,41 FCFA` ; `46,94` sur Diabetes) et `Ridge` (`104,87 FCFA`) ; proche du plancher de bruit de Bayes (~40 FCFA) |
+| **Exp 6 : Séries temporelles IoT** | Split chronologique strict + purge 18h, 5 seeds | **BiLSTM Fâ : F1 84,88 %, Rappel 93,16 %, ROC-AUC 0,9870** | Surpasse un **BiLSTM PyTorch standard** (`69,56 % F1`, `62,1 % Rappel`) de **+15,3 points F1** et `FaNet_NoLoss` (`80,19 %`) de +4,7 points (arbres : `RF 92,5 %`) |
+| **Exp 7 : Confidentialité vs Utilité (MIA)** | Attaque par perte (Yeom 2018) sur Pima, 5 splits | **MIA Loss-AUC 0,5229, TPR@1%FPR 1,28 %** (`NoLoss` : `0,5133` / `ROC-AUC 0,8248`) | Compromis supérieur à `MLP` (`0,5337`), `RF_Reg` (`0,5895`) et `RF_Unreg` (`0,7674`), aligné avec l'esprit Privacy-by-Design (sans valoir certification juridique formelle) |
+| **Exp 8 : Efficacité & ONNX (CPU)** | CodeCarbon par patient sur Pima (154 000 inf.) | **2 361 params, 30,2 Ko ONNX, 6,52 ms / 1k patients, 124,4 nWh/patient, F1 0,6449** | **7,3x plus rapide et -85,9 % d'énergie vs RF**, **-48,7 % vs HistGB**, meilleur F1 ; `MLP` reste plus rapide en latence pure (`0,61 ms`, `F1 0,5672`) |
 
----
+### Figures authentiques (générées directement depuis les mesures Kaggle)
 
-## Résultats expérimentaux (Bancs d'essai v4.0)
+![Courbes de fiabilité clinique](docs/figures/fig3_calibration_clinical.png)
 
-Les scripts de validation du dépôt couvrent 8 axes expérimentaux. Le tableau ci-dessous résume les mesures obtenues en phase v4.0 ainsi que leurs limites connues :
+![Vraies courbes ROC MIA et compromis Confidentialité vs Utilité](docs/figures/fig4_mia_privacy_utility.png)
 
-| Test | Script | Protocole et données | Résultat principal (v4.0) | Notes et limites identifiées |
-|---|---|---|---|---|
-| **T1 : Robustesse au bruit** | `tests/test_noise_robustness.py` | Bruit gaussien (0 % à 50 %) sur test, `agri_dataset.csv` (cible `rice`, 4,5 % positifs) | Accuracy 96,14 % à 50 % de bruit (RF : 95,68 %) | Split unique et classe très déséquilibrée : ré-évaluation multi-seeds sur F1 / PR-AUC prévue |
-| **T2 : Cross-Validation K=10** | `tests/test_cv_final.py` | Stratified 10-Fold + SMOTE sur train, `agri_dataset.csv` | Accuracy 97,50 % (+/- 1,21 %), F1 79,26 %, Rappel 100 % | `pos_weight` appliqué en plus de SMOTE : comparaison symétrique avec MLP en cours |
-| **T3 : Généralisation OOD** | `tests/test_ood.py` | Entraînement sur `rice`, test sur `jute` vs cultures sèches | Rappel OOD 100 % (RF : 92 %, GBM : 72 %) | Fuite sur les négatifs et baseline MLP à intégrer dans le protocole v5.0 |
-| **T4 : Calibration probabiliste** | `tests/test_calibration.py` | Split 60/40 sur `agri_dataset.csv` (`rice, jute, maize`) | Brier Score 0,0094 ; ECE non pondérée 14,71 % | Formule ECE à pondérer par taille de bin et à étendre aux données cliniques |
-| **T5 : Régression (Fintech)** | `tests/test_regression.py` | Données climatiques/prix synthétiques (FCFA) | MAE 142,6 FCFA, R2 0,32 (MLP : 70,6 FCFA, R2 0,84) | Limite liée à la saturation de la tête de sortie en régression |
-| **T6 : IoT temporel (LSTM)** | `tests/test_iot_timeseries.py` | Split chronologique strict (60/15/25) + seuil calibré sur Val | F1 54,01 %, Rappel 97,4 % (RF : F1 91,57 %) | Limite documentée ; baseline LSTM standard et purge temporelle à ajouter |
-| **T7 : Confidentialité (MIA)** | `tests/test_mia.py` | Attaque par seuil de confiance sur Pima Indians Diabetes (768 patients) | AUC d'attaque 0,5261 (RF : 0,7530 ; GBM : 0,6617) | Indicateur empirique de faible mémorisation (esprit Privacy-by-Design, non une certification juridique) ; compromis Privacy/Utility à compléter |
-| **T8 : Empreinte énergétique** | `tests/test_energy.py` | Mesure CodeCarbon sur Pima (1 000 batchs de 308 patients) | 40,0 nWh/batch d'inférence (-67,8 % vs RF 124,1 nWh ; MLP : 5,1 nWh ; GBM : 15,8 nWh) | Coût d'entraînement plus élevé (95,4 uWh) ; benchmark d'inférence ONNX prévu |
+![Robustesse au bruit gaussien](docs/figures/fig2_noise_robustness.png)
+
+**Limites documentées honnêtement :**
+- Sur des classes tabulaires extrêmement rares et séparables par seuils nets (`agri_rice`, 4,5 % positifs), les ensembles d'arbres (`RF 0,954`, `HistGB 0,948`) restent devant les réseaux neuronaux compacts (`FaNet 0,834`, `MLP 0,880`).
+- Sur les 4 jeux de données en distribution (Exp 1), le gain face au `MLP` iso-paramètres et aux arbres provient principalement de l'architecture combinatoire sur hypercube et du bloc résiduel `FaReLU/FaSigma` ; l'effet propre de l'alignement des polarités sur l'hypercube (`F1_Full` vs `A3_Permuted`) se manifeste surtout en décalage de distribution (Exp 3 `OOD_maize` : `60,5 %` vs `21,7 %`) et en séries temporelles IoT (`84,9 %` vs `80,2 %` sans perte Fâ).
+- En inférence CPU pure sur petit batch, un MLP dense minimal reste plus rapide (`0,61 ms / 1k` contre `6,52 ms / 1k` pour FaNet), le coût supplémentaire correspondant au calcul explicite de l'attention combinatoire 16x16.
 
 ---
 
@@ -75,59 +91,54 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-### 2. Exemple minimal (API PyTorch)
+### 2. Exemple minimal (API PyTorch v4.2)
 
 ```python
 import numpy as np
 from bokono.ml.torch_network import TorchFaNet
 
-# Données d'exemple normalisées (ex. 8 variables biomédicales)
+# Données d'exemple (ex. 8 biomarqueurs)
 X_train = np.random.randn(200, 8).astype(np.float32)
 y_train = (X_train[:, 0] + X_train[:, 1] > 0).astype(np.float32)
 X_test = np.random.randn(5, 8).astype(np.float32)
 
-# Initialisation du réseau neuro-symbolique (mode tabulaire)
-model = TorchFaNet(n_features=8, hidden_dim=32, n_outputs=1, seed=42)
+# Initialisation de FaNet v4.2 (hypercube 4 bits + bloc résiduel FaReLU/FaSigma)
+model = TorchFaNet(n_features=8, hidden_dim=32, n_outputs=1, dropout=0.1, seed=42)
 
 # Entraînement supervisé avec pénalité ontologique (lambda_fa)
-model.fit(X_train, y_train, epochs=30, lr=0.01, lambda_fa=0.1, verbose=False)
+model.fit(X_train, y_train, epochs=40, lr=0.005, optimizer="adamw", lambda_fa=0.1, verbose=False)
 
-# Inférence avec état symbolique associé
+# Inférence avec état symbolique Fâ associé
 probabilities, interpretations = model.predict(X_test)
 print(probabilities[0])
-print(interpretations[0]["ontological_state"])  # ex: STATE_128
-print(interpretations[0]["system_polarity"])    # ex: NEUTRE (avec KB publique)
+print(interpretations[0]["ontological_state"])  # ex: STATE_017
+print(interpretations[0]["system_polarity"])    # FAVORABLE / NEUTRE / DEFAVORABLE
 ```
 
-### 3. Démonstrations incluses
+### 3. Reproduire les tests et benchmarks (local ou Kaggle GPU)
 
 ```bash
-python demo_health_fanet.py
-python demo_agri_fanet.py
+# Suite de 79 tests unitaires
+pytest tests/test_week1.py tests/test_v03.py tests/test_v30.py -v
+
+# Exécution rapide locale (mode --quick)
+python tests/run_benchmark_v5.py --quick
+
+# Exécution complète (recommandée sur GPU Kaggle via kaggle/matrice256_kaggle_v5.ipynb)
+python tests/run_benchmark_v5.py --device auto --out-dir results_v42 --zip-path results_v42.zip
 ```
 
 ---
 
 ## Structure du dépôt
 
-- `bokono/core/` : encodeur binaire Fâ (`fa_encoder.py`), matrice 16x16 (`fa_matrix.py`) et base publique (`fa_knowledge_public.json`).
-- `bokono/ml/` : couches PyTorch (`TorchFaEmbedding`, `TorchFaHidden`, `TorchFaDecoder`), `FaImbalanceLoss`, `TorchFaNet` et implémentations NumPy historiques.
-- `data_poc/` : jeux de données PoC (`sante_dataset.csv`, `agri_dataset.csv`).
-- `docs/` : livre blanc, brouillons d'articles académiques et rapports d'audit.
-- `scripts/` : utilitaires de parsing, sécurisation de la KB et génération de figures.
-- `tests/` : suite de tests unitaires et bancs d'essai expérimentaux (T1 à T8).
-- `demo_health_fanet.py` / `demo_agri_fanet.py` : démonstrations santé et agriculture.
-- `LICENSE` / `pyproject.toml` : licence de recherche académique et configuration du package `bokono`.
-
----
-
-## Feuille de route scientifique (v4.1 / v5.0)
-
-Les travaux en cours visent à consolider la rigueur scientifique et la reproductibilité du framework avant publication académique (preprint arXiv / Zenodo, Deep Learning Indaba, workshops neuro-symboliques) :
-
-1. **Correctifs architecturaux** : alignement strict entraînement/inférence sur le décodeur, correction du mapping de la matrice 16x16 et de la gestion GPU dans `FaImbalanceLoss`, continuité des fonctions d'activation `FaReLU` et `FaSigma`.
-2. **Étude d'ablation complète multi-seeds** : comparaison à capacité égale contre Régression Logistique, Random Forest régularisé, Gradient Boosting, MLP PyTorch, `FaNet (lambda_fa=0)`, contrainte constante (`0.5`) et contrôle aléatoire (polarités permutées) avec tests statistiques appariés.
-3. **Standardisation et Edge AI** : publication stabilisée du package `bokono` sur PyPI, benchmarks d'inférence ONNX Runtime sur matériel contraint (CPU / Raspberry Pi) et validation pilote sur données terrain réelles.
+- `bokono/core/` : encodeur binaire Fâ (`fa_encoder.py`), matrice 16x16 (`fa_matrix.py`) et base mathématique publique alignée (`fa_knowledge_public.json`).
+- `bokono/ml/` : couches PyTorch v4.2 (`TorchFaEmbedding` hypercube 4 bits, `TorchFaHidden`, `TorchFaDecoder`), `FaImbalanceLoss`, `TorchFaNet` (tabulaire et BiLSTM) et activations continues (`FaReLU`, `TorchLearnableFaSigma`).
+- `data_poc/` : jeux de données réels PoC (`sante_dataset.csv`, `agri_dataset.csv`).
+- `docs/` : livre blanc v4.2, articles académiques FR/EN, rapport brut Kaggle (`benchmarks_v42_kaggle.md`) et figures authentiques (`docs/figures/`).
+- `kaggle/` : notebook GPU clé en main (`matrice256_kaggle_v5.ipynb`) pour reproduire l'intégralité des 8 expériences sur Tesla T4.
+- `tests/` : tests unitaires (`pytest`) et suite scientifique complète (`run_benchmark_v5.py`).
+- `LICENSE` / `pyproject.toml` : licence de recherche académique et configuration du package `bokono` v4.2.0.
 
 ---
 
@@ -138,9 +149,9 @@ Si vous évaluez ou citez ce travail dans un contexte académique :
 ```bibtex
 @software{bagbonon2026matrice256,
   author       = {Bagbonon, Cedoque},
-  title        = {Matrice-256 (FaNet / bokono): A Neuro-Symbolic AI Framework Inspired by Beninese Fa Binary Combinatorics},
+  title        = {Matrice-256 (FaNet v4.2 / bokono): A Neuro-Symbolic AI Framework Based on Beninese Fa 4-Bit Binary Hypercube Combinatorics},
   year         = {2026},
-  version      = {4.0.0},
+  version      = {4.2.0},
   url          = {https://github.com/CedBag/matrice-256},
   note         = {Selected as a representative case in the AI Case Innovation Competition for African Youth (FOCAC / China-BRICS AI Center, October 2026)}
 }

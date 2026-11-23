@@ -1,154 +1,87 @@
-# Matrice-256 : Un Réseau de Neurones Neuro-Symbolique à Biais Inductif Culturel fondé sur la Combinatoire du Fâ
+# Matrice-256 (FaNet v4.2) : Une architecture neuro-symbolique fondée sur l'hypercube binaire 4 bits du Fâ béninois
 
-**Auteur :** Cedoque BAGBONON (Projet Matrice-256)  
-**Contact :** projet.matrice256@protonmail.com  
-**Dépôt Code & Données :** https://github.com/Cedoque/Matrice-256  
-**Package Python (PyPI) :** `pip install bokono`  
+**Auteur :** Cedoque BAGBONON (Projet Matrice-256, Bénin)
+**Contact :** `projet.matrice256@protonmail.com`
+**Code et benchmarks reproductibles :** `https://github.com/CedBag/matrice-256`
+**Reconnaissance :** Cas représentatif sélectionné au *Concours créatif sur les cas d'application de l'IA à l'intention des jeunes des pays africains* (FOCAC / China-BRICS AI Center, octobre 2026 ; catégorie Progrès technologique, pages 165 à 167).
 
 ---
 
 ## Résumé
 
-Le Deep Learning moderne souffre de plusieurs limites fondamentales : opacité (boîte noire), sur-apprentissage mnémonique, instabilité sous fort bruit, et non-conformité par design à la protection des données de santé (risques d'attaques par inférence d'appartenance - MIA). Nous présentons **Matrice-256 (FaNet v4.2)**, le premier framework d'Intelligence Artificielle Neuro-Symbolique au monde qui intègre un biais inductif culturel issu de la géomancie béninoise (le Fâ) directement dans sa topologie latente et sa fonction de perte. Fondé sur un espace discret de 256 attracteurs sémantiques combinatoires issus de 16 clés fondamentales ($Mèdji$), FaNet contraint le réseau à optimiser non seulement l'erreur statistique, mais aussi l'équilibre global d'activation (Yin/Yang). 
+Les modèles d'apprentissage automatique standards sur données tabulaires et cliniques restent confrontés à des compromis difficiles entre pouvoir prédictif, calibration probabiliste, vulnérabilité aux attaques par inférence d'appartenance (MIA), robustesse au bruit de capteurs et frugalité en périphérie (Edge AI). Nous présentons **Matrice-256 (FaNet v4.2 / `bokono`)**, une architecture neuro-symbolique PyTorch compacte (~2 361 paramètres entraînables, export ONNX de 30,2 Ko) fondée sur l'algèbre binaire formelle sur 8 bits du **Fâ** béninois. FaNet projette les entrées par requêtes cross-features sur l'hypercube binaire exact 4 bits `K_16 in {-1, +1}^4` (16 clés Kpoli), forme une distribution sur les 256 Du par produit de Kronecker (`16 x 16`), traite les représentations via un bloc résiduel hybride (`FaReLU` continue + `FaSigma` lisse), et optimise une pénalité d'équilibre ontologique factorisée (`FaImbalanceLoss`) en complexité `O(16)`.
 
-Évalué sur 8 bancs d'essai scientifiques exigeants, FaNet démontre des performances remarquables :
-1. **Robustesse au bruit :** À 50% de bruit gaussien sur les capteurs, FaNet surpasse Random Forest (96,1% contre 95,7%).
-2. **Généralisation Out-Of-Distribution (OOD) :** Transfert inter-domaine parfait (Rappel de 100% contre 72% pour Gradient Boosting).
-3. **Vie privée :** Score de vulnérabilité MIA de 0,5261 (AUC proche du hasard pur, conforme au RGPD Art. 25 & HIPAA).
-4. **Frugalité :** Énergie d'inférence réduite de **-67,8%** par rapport à Random Forest (40 nWh/inférence).
-
-Cette étude présente les fondements mathématiques du modèle, ses benchmarks comparatifs, ses limitations actuelles, et constitue un appel aux tests beta de la communauté internationale via son package open-access.
+Évalué sur **GPU Kaggle Tesla T4** sur 8 bancs d'essai sans fuite de données (`5-Fold x 5 seeds = 25 runs` appariés avec tests de Wilcoxon face à Régression Logistique, Random Forest régularisé, HistGradientBoosting, MLP PyTorch résiduel iso-paramètres et 4 contrôles d'ablation), FaNet v4.2 démontre :
+1. **Performance clinique :** Surpasse significativement HistGradientBoosting et le MLP iso-paramètres en ROC-AUC et PR-AUC sur Breast Cancer Wisconsin (`ROC-AUC 0,9949, p = 0,0037`) et Pima Indians Diabetes (`ROC-AUC 0,8318, p = 0,0045` ; variance F1 2,5x plus faible que le MLP), avec la meilleure ECE clinique pondérée sur Breast Cancer (`1,27 %`).
+2. **Compromis Confidentialité / Utilité :** Présente une faible vulnérabilité aux attaques MIA par perte (`AUC 0,5133 à 0,5229`, `TPR@1%FPR = 1,28 %`) tout en conservant une utilité clinique élevée, devant `MLP` (`0,5337`), `RF` régularisé (`0,5895`) et `RF` non régularisé (`0,7674`).
+3. **Transfert OOD sur hypercube et IoT temporel :** Conserve `100 %` F1 OOD sur Jute et `60,5 %` F1 (`ROC-AUC 1,000`) sur Maïs là où les arbres tombent à `0 %` et où la permutation aléatoire des polarités sur l'hypercube 4 bits fait chuter le F1 de `-38,8` points (`21,7 %`). En séries temporelles IoT (purge chronologique de 18h), `FaNet-BiLSTM` atteint `84,88 %` F1 (`93,2 %` Rappel), dépassant un BiLSTM PyTorch standard (`69,56 %`) de `+15,3` points.
+4. **Frugalité Edge :** S'exécute 7,3x plus vite avec `-85,9 %` d'énergie d'inférence par patient (`124,4 nWh`) que Random Forest et `-48,7 %` que HistGradientBoosting.
 
 ---
 
-## 1. Introduction et Postulat Épistémologique
+## 1. Introduction et formalisation algébrique
 
-La recherche contemporaine en IA s'oriente vers le calcul neuro-symbolique (Neuro-Symbolic AI) pour surmonter les limites de l'apprentissage statistique pur. Cependant, la plupart des tentatives d'intégration de connaissances non-occidentales se limitent à la traduction de corpus textuels ou à des surcouches folkloriques. 
+Dans cette étude, le **Fâ** béninois n'est pas abordé sous un angle divinatoire, mais comme une **algèbre combinatoire binaire formelle sur `{0, 1}^4 x {0, 1}^4`** :
+- **16 Kpoli** : mots binaires de 4 bits représentant les 16 sommets de l'hypercube `K_16 in {-1, +1}^4` (`0` = marque ouverte `+1`, `1` = marque fermée `-1`).
+- **256 Du** : paires ordonnées `(i, j)` encodées sur 8 bits (`1 octet`), dont les 16 éléments diagonaux (`i = j`, **Mèdji**) maximisent la symétrie structurelle (`1 - d_H(i, j)/4 = 1,0`).
+- **Polarité canonique d'ouverture** : chaque Kpoli porte une ouverture binaire exacte `p_k = (nombre de bits ouverts) / 4` dans `{0,0 ; 0,25 ; 0,50 ; 0,75 ; 1,0}`, engendrant une polarité symétrique `p_{i,j} = (p_i + p_j) / 2` sur les 256 Du (93 favorables, 70 neutres, 93 défavorables).
 
-Nous postulons que les systèmes de pensée traditionnels africains, en particulier le **Fâ** (système géomantique ouest-africain), recèlent des structures mathématiques formelles d'organisation de l'information. Le Fâ n'est pas abordé ici sous un angle divinatoire, mais comme une **algèbre combinatoire binaire** :
-* **16 Mèdji** : Quartets binaires formant des vecteurs de base de dimension 4 ($2^4 = 16$ états).
-* **256 Kpoli** : Produits tensoriels croisés des 16 Mèdji ($16 \times 16 = 256$ configurations sémantiques).
-* **Lois d'équilibre (Polarités)** : Chaque configuration possède une polarité intrinsèque (favorable, défavorable, neutre) traduisant un équilibre ou une brisure d'harmonie (Yin/Yang).
-
-En injectant ces règles sous forme de **Biais Inductif (Inductive Bias)** et de pénalité de perte, nous contraignons le réseau de neurones à structurer son espace latent de manière stable et explicable.
-
-### 1.1 Le Saut Technologique (Leapfrogging) par l'IA Assistée
-La méthodologie de développement de Matrice-256 illustre également un saut technologique (leapfrogging) appliqué à la création de logiciels. De la même manière que le continent africain a contourné le déploiement coûteux des réseaux de télécommunication terrestres filaires pour adopter directement la téléphonie mobile et les services financiers décentralisés, cette recherche s'affranchit des barrières traditionnelles d'expertise technique pure. En s'appuyant sur des agents IA avancés (comme Gemini et Claude Sonnet au sein d'AntiGravity) pour codifier, auditer et valider l'implémentation PyTorch, l'innovateur peut surmonter le déficit classique de compétences logicielles. Ce modèle hybride de co-création permet de concentrer l'effort sur la modélisation théorique, la conceptualisation des savoirs endogènes et la souveraineté technologique.
+Cette formulation est 100 % mathématique, ouverte et reproductible sans dépendre de corpus privés.
 
 ---
 
-## 2. Formulation Mathématique et Architecture
+## 2. Architecture et formulation mathématique (FaNet v4.2)
 
-FaNet v4.2 est un réseau neuro-symbolique composé de trois couches principales implémentées sous PyTorch.
+### 2.1 Embedding combinatoire sur hypercube 4 bits (`TorchFaEmbedding`)
 
-```
-Entrée (X) ──► TorchFaEmbedding (Queries G/D ⊗ K_16) ──► TorchFaHidden (FaSigma) ──► TorchFaDecoder (FaDual) ──► Sortie (y)
-                                                                 ▲
-                                                                 │ (FaImbalanceLoss)
-                                                     Contrainte d'Équilibre Yin/Yang
-```
+Les entrées `x in R^n` sont normalisées de façon lisse par `x_norm = sigmoid((x - mu) / sigma)` (statistiques ajustées uniquement sur `X_train`). Pour chaque variable `f`, les requêtes Gauche et Droite combinent une projection locale (`PerFeatureLinear`) et un contexte global cross-features (`x_c = 2 * x_norm - 1`) :
 
-### 2.1 L'Embedding Combinatoire Croisé (`TorchFaEmbedding`)
-Pour un vecteur de caractéristiques d'entrée $x \in \mathbb{R}^N$ normalisé, la couche génère deux requêtes (Query Gauche, Query Droit) :
-$$ Q_{gauche} = W_g x + b_g $$
-$$ Q_{droit} = W_d x + b_d $$
+$$Q_g(f) = w_{g,f} x_{\text{norm}, f} + b_{g,f} + W_g^{\text{ctx}} x_c + b_g^{\text{ctx}}, \qquad Q_d(f) = w_{d,f} x_{\text{norm}, f} + b_{d,f} + W_d^{\text{ctx}} x_c + b_d^{\text{ctx}}$$
 
-Ces requêtes calculent des scores d'attention croisée sur la matrice $K_{16}$ (les 16 clés mères $Mèdji$) :
-$$ \alpha_g = \text{Softmax}\left(\frac{Q_{gauche} K_{16}^T}{\sqrt{d}}\right), \quad \alpha_d = \text{Softmax}\left(\frac{Q_{droit} K_{16}^T}{\sqrt{d}}\right) $$
+L'attention croisée sur l'hypercube `K_16 in {-1, +1}^{16 x 4}` et son produit de Kronecker produisent une distribution sur les 256 Du :
 
-La probabilité d'activation des 256 attracteurs sémantiques est le produit tensoriel de ces attentions :
-$$ A_{256} = \alpha_g \otimes \alpha_d $$
+$$\alpha_g = \text{Softmax}\left(\frac{Q_g K_{16}^T}{2}\right), \qquad \alpha_d = \text{Softmax}\left(\frac{Q_d K_{16}^T}{2}\right), \qquad A_{256} = \alpha_g \otimes \alpha_d$$
 
-L'embedding final projette ces attentions sur la table des valeurs sémantiques du Fâ.
+### 2.2 Bloc résiduel hybride et cohérence train / inférence
 
-### 2.2 Relaxation Continue et Activation
-Afin d'éviter le problème de disparition du gradient (vanishing gradient) lié à la nature discrète des marques du Fâ (ouvert/fermé), la fonction d'activation **FaDual** opère une relaxation différentiable :
-$$ f(x) = \frac{\tanh(x) + 1}{2} $$
-Le réseau apprend dans un espace probabiliste continu, et "l'effondrement" vers des états binaires discrets (Kpoli) ne s'effectue qu'au moment de l'inférence.
+- **`FaReLU` continue par morceaux** : raccordée sans saut aux seuils `1/16`, `8/16`, `15/16` (pentes `0,00 ; 0,25 ; 0,50 ; 1,00 ; 0,10`).
+- **`TorchLearnableFaSigma` lisse** : interpolation par noyau gaussien sur les 16 centres Kpoli (`C-infini`, gains entraînables dans `(0,5 ; 1,5)`).
+- **Bloc tabulaire résiduel** : `h_1 = FaReLU(W_1 e + b_1)`, puis `h = h_1 + FaSigma(W_2 h_1 + b_2)` avec initialisation plein rang (85 % Xavier + 15 % prior Matrice-256 à pas premier `17`).
+- **Décodeur aligné** : `sigmoid(z)` + `BCEWithLogitsLoss` en classification standard ; sortie linéaire non saturée + `MSELoss` en régression.
 
-### 2.3 Fonction de Perte Informée : `FaImbalanceLoss`
-L'optimisation globale intègre une contrainte de balance cosmologique $\Omega(F\hat{a})$ pondérée par un hyperparamètre $\lambda_{fa}$ :
-$$ \mathcal{L}_{Total} = \mathcal{L}_{Statistique}(y, \hat{y}) + \lambda_{fa} \cdot \Omega(F\hat{a}) $$
+### 2.3 Perte factorisée `FaImbalanceLoss`
 
-La pénalité $\Omega(F\hat{a})$ calcule l'écart entre la prédiction du réseau $\hat{y}$ et la polarité composite de l'espace latent $\Phi$ (moyenne orientée des attentions projetées sur la carte de polarité des signes) :
-$$ \Omega(F\hat{a}) = |\hat{y} - \Phi| $$
+Grâce à la relation `p_{i,j} = (p_i + p_j) / 2`, l'espérance de polarité sur les 256 Du du produit de Kronecker se factorise exactement en `O(16)` :
 
-Si le réseau prédit un événement sans que les attracteurs de son espace latent ne reflètent la signature structurelle d'équilibre correspondante, le gradient applique une correction massive pour restructurer la représentation interne.
+$$\Phi = \sum_{i,j=0}^{15} \alpha_g(i)\alpha_d(j) p_{i,j} = \frac{1}{2}\left(\sum_{i=0}^{15}\alpha_g(i)p_i + \sum_{j=0}^{15}\alpha_d(j)p_j\right)$$
+
+et la fonction de perte minimise `L_total = L_stat(y, y_hat) + lambda_fa * mean(|p_hat - Phi|)`.
 
 ---
 
-## 3. Résultats Expérimentaux et Benchmarks
+## 3. Synthèse des résultats expérimentaux (Kaggle Tesla T4)
 
-Les performances de FaNet v4.2 ont été comparées à des modèles de référence standard (Random Forest, Gradient Boosting, Multi-Layer Perceptron) sur plusieurs jeux de données réels (biomédicaux, agro-IoT, régression fintech).
+Exécution complète via `tests/run_benchmark_v5.py` sur **Tesla T4** (`6 267 s`, `5-Fold x 5 seeds = 25 runs` appariés, 79/79 tests unitaires `pytest`) :
 
-### Table 1 : Synthèse des 8 Tests de Validation
-
-| Axe de Test | Métrique Clé | Random Forest | Gradient Boosting | FaNet v4.2 | Statut |
-|---|---|---|---|---|---|
-| **T1 — Robustesse au Bruit (50%)** | Accuracy (%) | 95,68% | 95,00% | **96,14%** | ✅ Dépasse RF |
-| **T2 — Cross-Validation (K=10)** | Rappel (Recall) | 98,00% | 100,0% | **100,0%** | ✅ Parfait |
-| **T3 — Généralisation OOD** | Rappel OOD (%) | 92,00% | 72,00% | **100,0%** | ✅ Transfert total |
-| **T4 — Calibration Clinique** | ECE (%) | 21,59% | 19,08% | **14,71%** | ✅ Meilleure calibration |
-| **T5 — Régression Fintech** | MAE (FCFA) | (N/A) | (N/A) | **143 FCFA** | ✅ Régularisation fluide |
-| **T6 — IoT Temporel LSTM** | F1-Score (%) | **91,57%** | 91,36% | 54,01% (Calibré) | ⚠️ Limite documentée |
-| **T7 — Vie Privée (MIA)** | AUC de l'Attaque | 0,7530 (Vulnérable) | 0,6617 | **0,5261 (Sûr)** | ✅ Conforme RGPD |
-| **T8 — Sobriété (Inférence)** | nWh / req. | 124,1 nWh | 15,8 nWh | **40,0 nWh** | ✅ -67,8% vs RF |
-
-### Analyse Clé :
-* **La robustesse face au bruit (T1) & OOD (T3)** : Grâce à la contrainte ontologique, FaNet n'apprend pas par cœur des seuils statistiques. À 50% de bruit, il filtre les anomalies car les signaux doivent s'aligner sur des attracteurs stables. De même, sur des données hors-distribution (Riz testé sur Jute), il maintient un rappel parfait là où Gradient Boosting perd 28 points.
-* **La protection de la vie privée (T7)** : La `FaImbalanceLoss` agit comme une barrière de confidentialité naturelle. L'attaquant MIA est incapable de distinguer si une donnée a servi à l'entraînement ou non (AUC = 0,5261, proche de 0,50), garantissant une conformité native à l'Article 25 du RGPD (Privacy by Design).
+| Domaine / Expérience | Métrique principale | Baselines de référence | FaNet v4.2 (`F1_FaNet_Full`) | Constat clé |
+|---|---|---|---|---|
+| **Exp 1 : Breast Cancer (25 runs)** | F1 / ROC-AUC / PR-AUC | `RF 0,946 / 0,991 / 0,989` ; `HistGB 0,951 / 0,993 / 0,990` ; `MLP 0,964 / 0,991 / 0,990` | **0,961 / 0,995 / 0,994** | Bat significativement `RF`, `HistGB` (5/5 métriques) et `MLP` en ROC-AUC (`p=0,0037`) et PR-AUC (`p=0,0046`) |
+| **Exp 1 : Pima Diabetes (25 runs)** | F1 / ROC-AUC / Brier | `HistGB 0,620 / 0,815 / 0,169` ; `MLP 0,605 / 0,821 / 0,164` | **0,631 / 0,832 / 0,159** | Bat significativement `HistGB` (`p=0,0001`) et `MLP` (`p=0,0045`), variance F1 2,5x plus faible |
+| **Exp 1 : Agri High-Water (25 runs)** | F1 / ROC-AUC / ECE | `RF 1,000 / 1,000 / 0,83 %` ; `MLP 0,990 / 1,000 / 0,28 %` | **0,988 / 1,000 / 0,38 %** | +12,4 pts F1 vs v4.1 ; ECE meilleure que `RF` (`p<0,0001`) |
+| **Exp 2 : Bruit 50 % (Agri)** | F1 / ROC-AUC | `RF 0,540 / 0,907` ; `HistGB 0,579 / 0,878` ; `MLP 0,730 / 0,926` | **0,694 / 0,945** (`NoLoss`: **0,706 / 0,955**) | Meilleur ROC-AUC sous fort bruit ; largement devant les arbres |
+| **Exp 3 : OOD Maïs (sans fuite)** | Rappel / F1 / ROC-AUC | `RF 0 %` ; `HistGB 0 %` ; `LogReg 28,4 % / 44,2 %` ; `A3_Permuted 13,6 % / 21,7 %` | **47,0 % / 60,5 % / 1,000** | L'alignement de l'hypercube bat la permutation aléatoire de **+38,8 points F1** |
+| **Exp 4 : Calibration clinique** | ECE pondérée (OOF) | `Breast Cancer` : `LogReg 1,50 %`, `MLP 2,91 %`, `RF 3,59 %` | **1,27 % (1er/6)** ; Pima : `3,96 %` (`FaDual`: **1,73 %**) | Meilleure fiabilité probabiliste sur Breast Cancer |
+| **Exp 5 : Régression** | MAE / R2 | `Prix` : `RF 43,41 / 0,947` ; `Diabetes` : `RF 46,94 / 0,430` | **42,90 FCFA / 0,948** ; **45,32 / 0,456** | Dépasse `RF` sur les deux tâches de régression |
+| **Exp 6 : IoT temporel (purge 18h)** | F1 / Rappel / PR-AUC | `M0_BiLSTM_Iso 69,6 % / 62,1 % / 0,692` ; `RF 92,5 %` | **84,9 % / 93,2 % / 0,807** | Surpasse un BiLSTM standard de **+15,3 points F1** (+4,7 pts vs `NoLoss`) |
+| **Exp 7 : MIA Confidentialité/Utilité** | Loss-AUC / Test AUC / TPR@1% | `RF_Unreg 0,767 / 0,810` ; `RF_Reg 0,590 / 0,817` ; `MLP 0,534 / 0,815` | **0,523 / 0,819 / 1,28 %** (`NoLoss`: **0,513 / 0,825**) | Plus faible `TPR@1%FPR` et meilleur compromis que `MLP` et `RF` |
+| **Exp 8 : Efficacité CPU / ONNX** | ms/1k / nWh/patient / F1 | `RF 47,4 ms / 880,5 nWh / 0,577` ; `MLP 0,61 ms / 12,6 nWh / 0,567` | **6,52 ms / 124,4 nWh / 0,645** (30,2 Ko ONNX) | 7,3x plus rapide et `-85,9 %` d'énergie vs `RF` avec le meilleur F1 |
 
 ---
 
-## 4. Limitations Ouvertes et Travaux Futurs (v4.2)
+## 4. Limites documentées et conclusion
 
-Une innovation rigoureuse impose de documenter ses faiblesses. Dans le cadre de **l'IoT Temporel (Test 6)**, FaNet v4.0 (54% de F1) était nettement devancé par Random Forest (91%). La contrainte ontologique rigide peinait sur des signaux continus temporels chaotiques.
+1. **Ablation en distribution vs hors distribution :** En distribution (Exp 1), `F1_FaNet_Full` et `A3_FaNet_Permuted` obtiennent des scores équivalents (`p > 0,05`), montrant que l'avantage biomédical en distribution tient avant tout à l'architecture factorisée 16x16 et au bloc résiduel `FaReLU/FaSigma`. L'apport propre de l'alignement géométrique des polarités sur l'hypercube apparaît nettement en décalage OOD (`OOD_maize` : `60,5 %` vs `21,7 %`) et en IoT temporel (`84,9 %` vs `80,2 %`).
+2. **Classes tabulaires très rares :** Sur `agri_rice` (4,5 % positifs), les forêts et arbres boostés (`RF 0,954`, `HistGB 0,948`) restent supérieurs aux réseaux compacts (`FaNet 0,834`, `MLP 0,880`).
+3. **Débit CPU brut face au MLP minimal :** Un MLP dense pur reste plus rapide en latence brute (`0,61 ms` vs `6,52 ms` pour 1 000 patients), en contrepartie d'une discrimination et d'une calibration cliniques moindres.
 
-### Améliorations Apportées en v4.2 :
-Pour résoudre cette limite sans approximations, nous avons intégré dans cette version 4.2 :
-1. **Un LSTM Bidirectionnel (Bi-LSTM)** optionnel au sein de `TorchFaNet` pour capturer les dépendances temporelles passées et futures au sein de la fenêtre de glissement.
-2. **Une couche de régularisation par Dropout** probabiliste configurable, active sur les représentations cachées avant décodage, stabilisant l'entraînement sur des distributions déséquilibrées.
-3. **La configurabilité du nombre de couches LSTM** pour augmenter la capacité du réseau sur les séries complexes.
-
-La roadmap v5.0 s'oriente vers le remplacement du bloc récurrent par un mécanisme d'attention sémantique de type Transformer temporel léger (le SLM *Mbemba*).
-
----
-
-## 5. Appel aux Tests Beta et Retours de la Communauté
-
-Le framework `bokono` est mis à disposition de la communauté académique et technique sous licence propriétaire stricte pour recherche scientifique uniquement. Nous encourageons les chercheurs, ingénieurs et passionnés à installer et tester le package sur leurs propres machines.
-
-### 5.1 Installation rapide
-```bash
-pip install bokono
-```
-
-### 5.2 Exemple minimal d'utilisation (API Scikit-Learn / PyTorch)
-```python
-from bokono.ml.torch_network import TorchFaNet
-
-# Initialisation en mode tabulaire avec régularisation Dropout
-model = TorchFaNet(n_features=8, hidden_dim=32, dropout=0.1)
-
-# Entraînement supervisé neuro-symbolique
-model.fit(X_train, y_train, epochs=50, lambda_fa=0.1, pos_weight=1.0)
-
-# Inférence avec retour d'interprétation symbolique
-preds, interpretations = model.predict(X_test)
-print(interpretations[0]["system_polarity"]) # ex: FAVORABLE
-```
-
-### 5.3 Protocole de signalement et d'échange
-Ce projet est présenté "tel quel", dans un esprit d'amélioration continue et d'honnêteté scientifique. Nous sollicitons vos retours sur les aspects suivants :
-* **Stabilité et Compatibilité :** Le modèle a-t-il crashé sur votre ordinateur ? Si oui, veuillez nous envoyer par email la configuration de votre machine (OS, version de Python, version de PyTorch) et le message d'erreur (Traceback).
-* **Performance :** Avez-vous observé des problèmes de convergence ou des gradients instables sur vos propres jeux de données ?
-* **Explicabilité :** L'interprétation fournie par la nomenclature des états (`STATE_001` à `STATE_256`) a-t-elle été jugée utile dans vos cas d'usage ?
-
-**Canaux de retour :**
-* **Email dédié :** `projet.matrice256@protonmail.com`
-* **Tickets GitHub (Issues) :** Signaler un bug ou proposer une pull-request directement sur le dépôt.
-
----
-
-## 6. Conclusion
-Matrice-256 (FaNet v4.2) jette les bases d'une informatique neuro-symbolique ancrée dans les savoirs formels africains. Loin d'être un simple concept philosophique, elle démontre empiriquement sa viabilité et ses avantages stratégiques en matière de vie privée, de frugalité et de robustesse. L'implication active de la communauté internationale via ce bêta-test ouvert permettra d'affiner l'architecture pour les versions industrielles futures.
+**Conclusion :** Matrice-256 (FaNet v4.2) apporte une preuve reproductible qu'une formalisation algébrique issue du patrimoine béninois du Fâ peut structurer un framework PyTorch léger, calibré, respectueux de la vie privée et prêt pour l'Edge AI (`30,2 Ko ONNX`).
