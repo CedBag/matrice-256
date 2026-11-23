@@ -1,0 +1,24 @@
+cff-version: 1.2.0
+title: "Matrice-256 (FaNet v4.2 / bokono): A Neuro-Symbolic AI Framework Based on Beninese Fa 4-Bit Binary Hypercube Combinatorics"
+message: "If you use or evaluate Matrice-256 (bokono) in your research, please cite it using the metadata below."
+type: software
+authors:
+  - family-names: "Bagbonon"
+    given-names: "Cedoque"
+    email: "projet.matrice256@protonmail.com"
+    country: "BJ"
+version: "4.2.0"
+date-released: "2026-11-23"
+doi: "10.5281/zenodo.24463045"
+repository-code: "https://github.com/CedBag/matrice-256"
+url: "https://pypi.org/project/bokono/"
+keywords:
+  - "neuro-symbolic AI"
+  - "PyTorch"
+  - "Fa combinatorics"
+  - "Benin"
+  - "African AI"
+  - "Edge AI"
+  - "probability calibration"
+  - "bokono"
+abstract: "Compact PyTorch neuro-symbolic neural architecture grounded in the deterministic 8-bit binary combinatorics of the Beninese Fa system (16 Kpoli keys on the 4-bit binary hypercube, 256 Du states via Kronecker attention, continuous FaReLU/FaSigma residual layers, and O(16) ontological balance regularization). Validated across 8 reproducible Kaggle Tesla T4 benchmarks (5-Fold x 5 seeds) and selected as a representative case in the FOCAC / China-BRICS 2026 AI Case Innovation Competition for African Youth."

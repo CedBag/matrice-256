@@ -3,6 +3,8 @@
 **Author:** Cedoque BAGBONON (Matrice-256 Project, Benin)
 **Contact:** `projet.matrice256@protonmail.com`
 **Code & Reproducible Benchmarks:** `https://github.com/CedBag/matrice-256`
+**PyPI Package:** `pip install bokono` (`https://pypi.org/project/bokono/`)
+**Archived DOI (Zenodo, v4.2.0):** `10.5281/zenodo.24463045` (`https://doi.org/10.5281/zenodo.24463045`)
 **Recognition:** Selected as a representative case in the *AI Case Innovation Competition for African Youth* (FOCAC / China-BRICS Artificial Intelligence Development and Cooperation Center, October 2026; Technological Progress track, pp. 165-167).
 
 ---

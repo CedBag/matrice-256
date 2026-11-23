@@ -4,6 +4,7 @@
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![PyPI](https://img.shields.io/pypi/v/bokono.svg)](https://pypi.org/project/bokono/)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.24463045.svg)](https://doi.org/10.5281/zenodo.24463045)
 [![PyTorch](https://img.shields.io/badge/PyTorch-%23EE4C2C.svg?style=flat&logo=PyTorch&logoColor=white)](https://pytorch.org/)
 [![FOCAC 2026](https://img.shields.io/badge/FOCAC%20%2F%20China--BRICS%202026-Cas%20Repr%C3%A9sentatif-1e40af.svg)](https://github.com/CedBag/matrice-256#reconnaissance-internationale)
 [![Benchmarks Kaggle T4](https://img.shields.io/badge/Benchmarks-Kaggle%20Tesla%20T4%20(25%20runs)-059669.svg)](https://github.com/CedBag/matrice-256#r%C3%A9sultats-exp%C3%A9rimentaux-v%C3%A9rifi%C3%A9s-kaggle-tesla-t4-v42)
@@ -163,9 +164,12 @@ Si vous évaluez ou citez ce travail dans un contexte académique :
   author       = {Bagbonon, Cedoque},
   title        = {Matrice-256 (FaNet v4.2 / bokono): A Neuro-Symbolic AI Framework Based on Beninese Fa 4-Bit Binary Hypercube Combinatorics},
   year         = {2026},
+  month        = nov,
   version      = {4.2.0},
-  url          = {https://github.com/CedBag/matrice-256},
-  note         = {Selected as a representative case in the AI Case Innovation Competition for African Youth (FOCAC / China-BRICS AI Center, October 2026)}
+  publisher    = {Zenodo},
+  doi          = {10.5281/zenodo.24463045},
+  url          = {https://doi.org/10.5281/zenodo.24463045},
+  note         = {GitHub: https://github.com/CedBag/matrice-256 | PyPI: https://pypi.org/project/bokono/ | Selected as a representative case in the AI Case Innovation Competition for African Youth (FOCAC / China-BRICS AI Center, October 2026)}
 }
 ```
 
