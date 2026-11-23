@@ -3,10 +3,11 @@
 **Framework d'Intelligence Artificielle Neuro-Symbolique fondé sur la combinatoire binaire du Fâ (Bénin)**
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![PyPI](https://img.shields.io/pypi/v/bokono.svg)](https://pypi.org/project/bokono/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-%23EE4C2C.svg?style=flat&logo=PyTorch&logoColor=white)](https://pytorch.org/)
-[![FOCAC 2026](https://img.shields.io/badge/FOCAC%20%2F%20China--BRICS%202026-Cas%20Repr%C3%A9sentatif-1e40af.svg)](#reconnaissance-internationale)
-[![Benchmarks Kaggle T4](https://img.shields.io/badge/Benchmarks-Kaggle%20Tesla%20T4%20(25%20runs)-059669.svg)](#résultats-expérimentaux-vérifiés-kaggle-tesla-t4-v42)
-[![License: Academic Research](https://img.shields.io/badge/License-Academic%20Research-red.svg)](LICENSE)
+[![FOCAC 2026](https://img.shields.io/badge/FOCAC%20%2F%20China--BRICS%202026-Cas%20Repr%C3%A9sentatif-1e40af.svg)](https://github.com/CedBag/matrice-256#reconnaissance-internationale)
+[![Benchmarks Kaggle T4](https://img.shields.io/badge/Benchmarks-Kaggle%20Tesla%20T4%20(25%20runs)-059669.svg)](https://github.com/CedBag/matrice-256#r%C3%A9sultats-exp%C3%A9rimentaux-v%C3%A9rifi%C3%A9s-kaggle-tesla-t4-v42)
+[![License: Academic Research](https://img.shields.io/badge/License-Academic%20Research-red.svg)](https://github.com/CedBag/matrice-256/blob/main/LICENSE)
 
 > **English Summary:** Matrice-256 (FaNet v4.2 / `bokono`) is a compact PyTorch neuro-symbolic framework (~2,361 trainable parameters, 30.2 KB ONNX export) built on the 8-bit binary combinatorics of the Beninese Fa system (16 Kpoli keys on the 4-bit binary hypercube `{-1, +1}^4`, 256 composite Du states via Kronecker attention). Selected in October 2026 as a representative case in the *AI Case Innovation Competition for African Youth* (FOCAC / China-BRICS AI Center, 114 selected out of 738 submissions across 47 African countries, Technological Progress track). Evaluated across 8 reproducible Kaggle Tesla T4 GPU benchmarks (5-Fold x 5 seeds = 25 paired runs with Wilcoxon signed-rank tests).
 
@@ -39,16 +40,16 @@ En **octobre 2026**, **Matrice-256 (FaNet)** a été sélectionné comme **cas r
    - Mode séquentiel natif (`seq_len > 0`, BiLSTM), exécution locale hors-ligne (air-gapped), **2 361 paramètres** en mode tabulaire sur Pima Diabetes et export ONNX de **30,2 Ko**.
 
 Documentation scientifique complète :
-- [Livre blanc technique v4.2 (FR)](docs/whitepaper_matrice256.md)
-- [Article académique v4.2 (EN)](docs/academic_paper_en.md)
-- [Article académique v4.2 (FR)](docs/academic_paper_fr.md)
-- [Rapport brut complet Kaggle Tesla T4](docs/benchmarks_v42_kaggle.md)
+- [Livre blanc technique v4.2 (FR)](https://github.com/CedBag/matrice-256/blob/main/docs/whitepaper_matrice256.md)
+- [Article académique v4.2 (EN)](https://github.com/CedBag/matrice-256/blob/main/docs/academic_paper_en.md)
+- [Article académique v4.2 (FR)](https://github.com/CedBag/matrice-256/blob/main/docs/academic_paper_fr.md)
+- [Rapport brut complet Kaggle Tesla T4](https://github.com/CedBag/matrice-256/blob/main/docs/benchmarks_v42_kaggle.md)
 
 ---
 
 ## Résultats expérimentaux vérifiés (Kaggle Tesla T4, v4.2)
 
-Tous les résultats ci-dessous sont issus du protocole reproductible [tests/run_benchmark_v5.py](tests/run_benchmark_v5.py) exécuté sur **Kaggle GPU Tesla T4** (PyTorch `2.11.0+cu130`, `5-Fold x 5 seeds = 25 runs` appariés, tests statistiques de Wilcoxon, 79/79 tests unitaires `pytest` validés) :
+Tous les résultats ci-dessous sont issus du protocole reproductible [tests/run_benchmark_v5.py](https://github.com/CedBag/matrice-256/blob/main/tests/run_benchmark_v5.py) exécuté sur **Kaggle GPU Tesla T4** (PyTorch `2.11.0+cu130`, `5-Fold x 5 seeds = 25 runs` appariés, tests statistiques de Wilcoxon, 79/79 tests unitaires `pytest` validés) :
 
 | Expérience | Données et protocole | Résultat FaNet v4.2 (`F1_FaNet_Full`) | Comparaison aux baselines contrôlées |
 |---|---|---|---|
@@ -65,11 +66,11 @@ Tous les résultats ci-dessous sont issus du protocole reproductible [tests/run_
 
 ### Figures authentiques (générées directement depuis les mesures Kaggle)
 
-![Courbes de fiabilité clinique](docs/figures/fig3_calibration_clinical.png)
+![Courbes de fiabilité clinique](https://raw.githubusercontent.com/CedBag/matrice-256/main/docs/figures/fig3_calibration_clinical.png)
 
-![Vraies courbes ROC MIA et compromis Confidentialité vs Utilité](docs/figures/fig4_mia_privacy_utility.png)
+![Vraies courbes ROC MIA et compromis Confidentialité vs Utilité](https://raw.githubusercontent.com/CedBag/matrice-256/main/docs/figures/fig4_mia_privacy_utility.png)
 
-![Robustesse au bruit gaussien](docs/figures/fig2_noise_robustness.png)
+![Robustesse au bruit gaussien](https://raw.githubusercontent.com/CedBag/matrice-256/main/docs/figures/fig2_noise_robustness.png)
 
 **Limites documentées honnêtement :**
 - Sur des classes tabulaires extrêmement rares et séparables par seuils nets (`agri_rice`, 4,5 % positifs), les ensembles d'arbres (`RF 0,954`, `HistGB 0,948`) restent devant les réseaux neuronaux compacts (`FaNet 0,834`, `MLP 0,880`).
@@ -80,7 +81,18 @@ Tous les résultats ci-dessous sont issus du protocole reproductible [tests/run_
 
 ## Démarrage rapide
 
-### 1. Installation locale
+### 1. Installation (via PyPI ou depuis les sources)
+
+```bash
+# Installation directe depuis PyPI (recommandée)
+pip install -U bokono
+
+# Avec les extras optionnels (benchmarks scientifiques ou interface Dash)
+pip install "bokono[benchmark]"
+pip install "bokono[ui]"
+```
+
+Ou depuis le dépôt GitHub pour reproduire les tests et benchmarks :
 
 ```bash
 git clone https://github.com/CedBag/matrice-256.git
@@ -88,7 +100,7 @@ cd matrice-256
 python -m venv .venv
 # Linux / macOS : source .venv/bin/activate
 # Windows PowerShell : .venv\Scripts\Activate.ps1
-pip install -r requirements.txt
+pip install -e ".[benchmark,dev]"
 ```
 
 ### 2. Exemple minimal (API PyTorch v4.2)
@@ -161,7 +173,7 @@ Si vous évaluez ou citez ce travail dans un contexte académique :
 
 ## Licence et contact
 
-Ce dépôt est distribué sous **Licence de Recherche Académique et d'Évaluation** (voir [LICENSE](LICENSE)) : la lecture, l'audit, la vérification scientifique par les pairs et l'expérimentation locale non commerciale sont autorisés. Toute utilisation commerciale, redistribution ou exploitation industrielle requiert un accord écrit préalable.
+Ce dépôt est distribué sous **Licence de Recherche Académique et d'Évaluation** (voir [LICENSE](https://github.com/CedBag/matrice-256/blob/main/LICENSE)) : la lecture, l'audit, la vérification scientifique par les pairs et l'expérimentation locale non commerciale sont autorisés. Toute utilisation commerciale, redistribution ou exploitation industrielle requiert un accord écrit préalable.
 
 - **Auteur** : Cedoque BAGBONON (Projet Matrice-256, Bénin)
 - **Contact** : `projet.matrice256@protonmail.com`

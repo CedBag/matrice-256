@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+requires = ["setuptools>=77", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -7,13 +7,13 @@ name = "bokono"
 version = "4.2.0"
 description = "Bibliothèque algorithmique et ML neuro-symbolique fondée sur la logique binaire du Fâ (Bénin)"
 readme = "README.md"
-license = {text = "Academic Research and Evaluation License"}
+license-files = ["LICENSE"]
 authors = [
     {name = "Cedoque BAGBONON - Projet Matrice-256", email = "projet.matrice256@protonmail.com"}
 ]
 keywords = ["fa", "benin", "machine-learning", "neuro-symbolic", "bokono", "african-ai", "pytorch"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Science/Research",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Programming Language :: Python :: 3",
@@ -29,6 +29,12 @@ dependencies = [
     "pandas>=2.0.0",
     "scikit-learn>=1.2.2",
 ]
+
+[project.urls]
+Homepage = "https://github.com/CedBag/matrice-256"
+Repository = "https://github.com/CedBag/matrice-256"
+Documentation = "https://github.com/CedBag/matrice-256/blob/main/docs/whitepaper_matrice256.md"
+Issues = "https://github.com/CedBag/matrice-256/issues"
 
 [project.optional-dependencies]
 ui = [
@@ -49,7 +55,7 @@ dev = [
 testpaths = ["tests"]
 
 [tool.setuptools.packages.find]
-include = ["bokono*"]
+include = ["bokono", "bokono.*"]
 
 [tool.setuptools.package-data]
 "bokono.core" = ["fa_knowledge_public.json"]

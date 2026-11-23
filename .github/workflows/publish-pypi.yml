@@ -1,0 +1,63 @@
+name: Publish bokono to PyPI
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    name: Build package and run unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install build and test tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install build twine pytest
+          pip install --extra-index-url https://download.pytorch.org/whl/cpu torch numpy pandas scikit-learn
+
+      - name: Build sdist and wheel
+        run: python -m build
+
+      - name: Validate distributions with twine
+        run: twine check dist/*
+
+      - name: Install built wheel and run pytest (79 unit tests)
+        run: |
+          pip install dist/*.whl
+          pytest tests/test_week1.py tests/test_v03.py tests/test_v30.py -v
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-package-distributions
+          path: dist/
+
+  pypi-publish:
+    name: Publish distribution to PyPI (Trusted Publishing)
+    needs:
+      - build-and-test
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/bokono
+    permissions:
+      id-token: write
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: python-package-distributions
+          path: dist/
+
+      - name: Publish package to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
